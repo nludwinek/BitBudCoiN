@@ -1,16 +1,14 @@
 {
-  "name": "bitbudcoin-core",
+  "name": "bbc-blockchain-backend",
   "version": "1.0.0",
-  "description": "BitBudCoin Mainnet Core",
+  "description": "Backend blockchainowy BBC z symulacją kopania (proof-of-work)",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node --watch server.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
-    "express": "^4.18.2"
+    "express": "^4.19.2"
   }
 }
