@@ -6,98 +6,38 @@
 const crypto = require("crypto");
 
 class Block {
-
-    constructor(
-        height,
-        previousHash,
-        transactions,
-        difficulty,
-        miner,
-        reward
-    ) {
-
-        this.height = height;
-
-        this.timestamp = Date.now();
-
-        this.previousHash = previousHash;
-
+    constructor(index, timestamp, transactions, previousHash, difficulty, nonce = 0) {
+        this.index = index;
+        this.timestamp = timestamp;
         this.transactions = transactions;
-
+        this.previousHash = previousHash;
         this.difficulty = difficulty;
-
-        this.miner = miner;
-
-        this.reward = reward;
-
-        this.nonce = 0;
-
+        this.nonce = nonce;
         this.hash = this.calculateHash();
-
     }
-
-    // -------------------------------------
-    // HASH
-    // -------------------------------------
 
     calculateHash() {
+        const data =
+            this.index +
+            this.timestamp +
+            JSON.stringify(this.transactions) +
+            this.previousHash +
+            this.nonce +
+            this.difficulty;
 
-        return crypto
-            .createHash("sha256")
-            .update(
-
-                this.height +
-
-                this.previousHash +
-
-                this.timestamp +
-
-                JSON.stringify(this.transactions) +
-
-                this.difficulty +
-
-                this.miner +
-
-                this.reward +
-
-                this.nonce
-
-            )
-
-            .digest("hex");
-
+        return crypto.createHash("sha256").update(data).digest("hex");
     }
 
-    // -------------------------------------
-    // MINE
-    // -------------------------------------
-
-    mine() {
-
+    mineBlock() {
         const target = "0".repeat(this.difficulty);
 
         while (!this.hash.startsWith(target)) {
-
             this.nonce++;
-
             this.hash = this.calculateHash();
-
         }
 
-        return this.hash;
-
+        return this;
     }
-
-    // -------------------------------------
-    // VERIFY
-    // -------------------------------------
-
-    isValid() {
-
-        return this.hash === this.calculateHash();
-
-    }
-
 }
 
 module.exports = Block;
