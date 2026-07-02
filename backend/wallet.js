@@ -1,6 +1,6 @@
 // =====================================================
-// BitBudCoin Core
-// wallet.js (legend version+)
+// BitBudCoin Wallet (Legend Version+)
+// wallet.js
 // =====================================================
 
 const crypto = require("crypto");
