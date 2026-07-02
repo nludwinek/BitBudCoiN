@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>BBC Docs • BitBudCoin vMax</title>
+
+<style>
+    body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; }
+    header { background:#111; padding:20px; border-bottom:2px solid #222; display:flex; justify-content:space-between; align-items:center; }
+    .logo { font-size:24px; color:#00ffaa; font-weight:bold; }
+    a { color:#888; text-decoration:none; }
+    main { max-width:900px; margin:30px auto; padding:20px; }
+
+    .section { background:#111; border:1px solid #222; border-radius:10px; padding:25px; margin-bottom:25px; }
+    .section h2 { margin-top:0; color:#00ffaa; }
+
+    code { background:#0f0f0f; padding:6px; border-radius:6px; display:block; margin:10px 0; color:#00ffaa; }
+    pre { background:#0f0f0f; padding:15px; border-radius:10px; overflow-x:auto; }
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="logo">BBC DOCUMENTATION vMax</div>
+    <a href="index.html">← Home</a>
+</header>
+
+<main>
+
+<div class="section">
+    <h2>1. Wprowadzenie</h2>
+    <p>BitBudCoin (BBC) to lekki, szybki i w pełni otwarty blockchain Proof‑of‑Work zbudowany w JavaScript.  
+    Sieć jest zdecentralizowana, każdy może uruchomić własny node, kopać bloki i wysyłać transakcje.</p>
+</div>
+
+<div class="section">
+    <h2>2. Architektura</h2>
+    <p>BBC składa się z kilku głównych modułów:</p>
+
+    <ul>
+        <li>Blockchain — struktura bloków</li>
+        <li>Block — pojedynczy blok</li>
+        <li>Transaction — podpisane transakcje ECDSA</li>
+        <li>Mempool — oczekujące transakcje</li>
+        <li>Wallet — generowanie kluczy i podpisy</li>
+        <li>P2P — synchronizacja między węzłami</li>
+        <li>API — REST dla użytkowników</li>
+    </ul>
+</div>
+
+<div class="section">
+    <h2>3. API Node'a</h2>
+
+    <h3>GET /info</h3>
+    <p>Zwraca podstawowe informacje o node.</p>
+
+    <h3>GET /chain</h3>
+    <p>Zwraca cały blockchain.</p>
+
+    <h3>GET /block/:id</h3>
+    <p>Zwraca pojedynczy blok.</p>
+
+    <h3>GET /balance/:address</h3>
+    <p>Zwraca saldo adresu.</p>
+
+    <h3>GET /mempool</h3>
+    <p>Zwraca oczekujące transakcje.</p>
+
+    <h3>POST /transaction</h3>
+    <p>Dodaje podpisaną transakcję do mempoola.</p>
+
+    <pre>{
+  "from": "BbC123...",
+  "to": "BbC456...",
+  "amount": 10,
+  "fee": 0.001,
+  "fromPublicKey": "...",
+  "signature": "..."
+}</pre>
+
+    <h3>POST /mine</h3>
+    <p>Kopie nowy blok.</p>
+</div>
+
+<div class="section">
+    <h2>4. Portfel BBC</h2>
+    <p>Portfel generuje klucze ECDSA secp256k1:</p>
+
+    <pre>
+privateKey → hex
+publicKey  → hex
+address    → BbC + sha256(publicKey).slice(0,40)
+    </pre>
+
+    <p>Podpisy transakcji:</p>
+
+    <pre>
+hash = sha256(JSON.stringify(payload))
+signature = key.sign(hash).toDER("hex")
+    </pre>
+</div>
+
+<div class="section">
+    <h2>5. Mining</h2>
+    <p>BBC używa klasycznego Proof‑of‑Work:</p>
+
+    <pre>
+while(hash.substring(0, difficulty) !== "0".repeat(difficulty)) {
+    nonce++;
+    hash = sha256(blockData + nonce);
+}
+    </pre>
+
+    <p>Nagroda za blok: <strong>50 BBC</strong></p>
+</div>
+
+<div class="section">
+    <h2>6. P2P</h2>
+    <p>Węzły komunikują się przez WebSocket:</p>
+
+    <ul>
+        <li>CHAIN — synchronizacja chainu</li>
+        <li>TRANSACTION — broadcast transakcji</li>
+        <li>NEW_BLOCK — broadcast nowego bloku</li>
