@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>BBC Dashboard • Node vMax</title>
+
+<style>
+    body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; }
+    header { background:#111; padding:20px; border-bottom:2px solid #222; display:flex; justify-content:space-between; align-items:center; }
+    .logo { font-size:24px; color:#00ffaa; font-weight:bold; }
+    a { color:#888; text-decoration:none; }
+    main { max-width:1000px; margin:30px auto; padding:20px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:20px; }
+    .card { background:#111; border:1px solid #222; border-radius:10px; padding:20px; }
+    .card h3 { margin-top:0; color:#00ffaa; }
+    .value { font-size:26px; font-weight:bold; margin:10px 0; }
+    button { padding:10px 18px; background:#00ffaa; color:#000; border:none; font-weight:bold; cursor:pointer; border-radius:6px; }
+    button:hover { background:#00dd99; }
+    pre { background:#0f0f0f; padding:10px; border-radius:6px; overflow-x:auto; font-size:12px; }
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="logo">BBC NODE DASHBOARD</div>
+    <div>
+        <a href="index.html">← Home</a>
+    </div>
+</header>
+
+<main>
+
+<div class="grid">
+
+    <div class="card">
+        <h3>Node Info</h3>
+        <div class="value" id="networkName">...</div>
+        <div>Symbol: <span id="symbol">...</span></div>
+        <div>Chain ID: <span id="chainId">...</span></div>
+        <div>Version: <span id="version">...</span></div>
+    </div>
+
+    <div class="card">
+        <h3>Blockchain</h3>
+        <div>Height: <span class="value" id="height">0</span></div>
+        <div>Latest Hash:</div>
+        <div id="latestHash" style="font-size:12px;color:#999;">...</div>
+        <button onclick="refreshChain()">Odśwież</button>
+    </div>
+
+    <div class="card">
+        <h3>Mempool</h3>
+        <div class="value" id="mempoolCount">0</div>
+        <button onclick="refreshMempool()">Odśwież</button>
+        <pre id="mempoolPreview">Brak danych</pre>
+    </div>
+
+    <div class="card">
+        <h3>Akcje</h3>
+        <button onclick="mineBlock()">⛏ Wykop blok</button>
+        <div id="actionStatus" style="margin-top:10px;font-size:13px;color:#00ffaa;">Gotowy</div>
+    </div>
+
+</div>
+
+</main>
+
+<script>
+const API = "http://localhost:5000";
+
+async function loadInfo() {
+    try {
+        const res = await fetch(`${API}/info`);
+        const data = await res.json();
+
+        document.getElementById("networkName").textContent = data.network;
+        document.getElementById("symbol").textContent = data.symbol;
