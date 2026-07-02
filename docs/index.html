@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>BitBudCoiN • Bud Bitcoin</title>
+
 <style>
     body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; text-align:center; }
     header { padding:60px 20px 40px; background:linear-gradient(#111, #0a0a0a); }
@@ -14,21 +15,50 @@
         font-weight:bold; border-radius:8px; text-decoration:none; font-size:17px;
     }
     .btn:hover { background:#00dd99; transform:scale(1.05); }
+    #statusBox { margin-top:25px; font-size:18px; color:#00ffaa; }
 </style>
 </head>
+
 <body>
 
 <header>
     <img src="https://i.imgur.com/OruL3.png" class="logo" alt="BitBudCoiN">
     <h1>BitBudCoiN</h1>
     <p class="tagline">Bud Bitcoin • Decentralizowana kopalnia</p>
-    
+
     <div>
         <a class="btn" href="miner.html">🚀 Koparka vMax</a>
         <a class="btn" href="wallet.html">💰 Portfel</a>
         <a class="btn" href="explorer.html">📊 Explorer</a>
     </div>
+
+    <div id="statusBox">Sprawdzanie statusu sieci...</div>
 </header>
+
+<script>
+const API = "http://localhost:5000";
+
+async function checkNodeStatus() {
+    const box = document.getElementById("statusBox");
+
+    try {
+        const res = await fetch(API + "/info");
+        const data = await res.json();
+
+        box.innerHTML = `
+            🟢 Node Online<br>
+            Sieć: <span style="color:#00ffaa">${data.network}</span><br>
+            Wysokość: <span style="color:#00ffaa">${data.height}</span>
+        `;
+    } catch {
+        box.innerHTML = "🔴 Node Offline";
+        box.style.color = "#ff4444";
+    }
+}
+
+checkNodeStatus();
+setInterval(checkNodeStatus, 5000);
+</script>
 
 </body>
 </html>
