@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>BBC Transaction • vMax</title>
+
+<style>
+    body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; }
+    header { background:#111; padding:20px; border-bottom:2px solid #222; display:flex; justify-content:space-between; align-items:center; }
+    .logo { font-size:24px; color:#00ffaa; font-weight:bold; }
+    a { color:#888; text-decoration:none; }
+    main { max-width:900px; margin:30px auto; padding:20px; }
+
+    .card { background:#111; border:1px solid #222; border-radius:10px; padding:20px; margin-bottom:25px; }
+    .card h2 { margin-top:0; color:#00ffaa; }
+
+    .label { color:#00ffaa; font-size:14px; margin-top:15px; }
+    .value { font-size:16px; margin-bottom:10px; }
+
+    .hash { font-size:12px; color:#999; word-break:break-all; }
+
+    table { width:100%; border-collapse:collapse; background:#111; margin-top:20px; }
+    th { background:#181818; color:#00ffaa; padding:10px; }
+    td { padding:10px; border-bottom:1px solid #222; }
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="logo">BBC TRANSACTION vMax</div>
+    <a href="explorer.html">← Explorer</a>
+</header>
+
+<main>
+
+<div class="card">
+    <h2>Informacje o transakcji</h2>
+
+    <div class="label">TXID</div>
+    <div class="hash" id="txid">...</div>
+
+    <div class="label">Od</div>
+    <div class="value" id="from">...</div>
+
+    <div class="label">Do</div>
+    <div class="value" id="to">...</div>
+
+    <div class="label">Ilość</div>
+    <div class="value" id="amount">...</div>
+
+    <div class="label">Opłata (fee)</div>
+    <div class="value" id="fee">...</div>
+
+    <div class="label">Czas</div>
+    <div class="value" id="timestamp">...</div>
+
+    <div class="label">Public Key</div>
+    <div class="hash" id="publicKey">...</div>
+
+    <div class="label">Podpis</div>
+    <div class="hash" id="signature">...</div>
+
+</div>
+
+<div class="card">
+    <h2>Status transakcji</h2>
+    <div class="value" id="status">Sprawdzanie...</div>
+</div>
+
+</main>
+
+<script>
+const API = "http://localhost:5000";
+
+// Pobieranie TXID z URL
+const params = new URLSearchParams(window.location.search);
+const txid = params.get("id");
+
+if (!txid) {
+    alert("Brak TXID w URL!");
+}
+
+// Ładowanie transakcji
+async function loadTransaction() {
+    try {
+        const chainRes = await fetch(`${API}/chain`);
+        const chain = await chainRes.json();
+
+        let foundTx = null;
+        let foundInBlock = null;
+
+        // Szukanie transakcji w blokach
+        chain.forEach(block => {
+            block.transactions.forEach(tx => {
+                if (tx.txid === txid) {
+                    foundTx = tx;
+                    foundInBlock = block;
+                }
+            });
+        });
+
+        // Szukanie w mempoolu
+        const memRes = await fetch(`${API}/mempool`);
+        const mempool = await memRes.json();
+
+        const memTx = mempool.find(t => t.txid === txid);
+
+        // Wyświetlanie danych
+        if (foundTx) {
+            document.getElementById("txid").textContent = foundTx.txid;
+            document.getElementById("from").textContent = foundTx.from || "COINBASE";
+            document.getElementById("to").textContent = foundTx.to;
+            document.getElementById("amount").textContent = foundTx.amount + " BBC";
+            document.getElementById("fee").textContent = foundTx.fee || 0;
+            document.getElementById("timestamp").text
