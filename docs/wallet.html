@@ -27,8 +27,9 @@
 <main>
     <div class="panel">
         <h2>Twój Portfel</h2>
-        <button onclick="generateAddress()">🔑 Wygeneruj Nowy Adres</button>
+        <button onclick="generateWallet()">🔑 Wygeneruj Nowy Portfel</button>
         <input type="text" id="walletAddress" placeholder="Twój adres BBC" readonly>
+        <input type="text" id="privateKey" placeholder="Private Key" readonly>
         <div class="balance" id="balanceDisplay">0.00 BBC</div>
         <button onclick="checkBalance()">Odśwież Saldo</button>
     </div>
@@ -48,42 +49,137 @@
         <h2>Wyślij BBC</h2>
         <input type="text" id="toAddress" placeholder="Adres odbiorcy">
         <input type="number" id="amount" placeholder="Ilość BBC" step="0.01">
+        <input type="number" id="fee" placeholder="Opłata (fee)" step="0.001" value="0.001">
         <button onclick="sendTransaction()">Wyślij Transakcję</button>
         <div id="txStatus" class="status"></div>
     </div>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/elliptic@6.5.4/dist/elliptic.min.js"></script>
+
 <script>
-const API = "http://localhost:5000";   // ← ZMIEŃ NA SWÓJ LINK PO WDROŻENIU
+const API = "http://localhost:5000";
 
-let currentAddress = "";
+let privateKey = "";
+let publicKey = "";
+let address = "";
 
-function generateAddress() {
-    const random = "BbC" + Math.random().toString(36).substring(2, 15).toUpperCase();
-    currentAddress = random;
-    document.getElementById("walletAddress").value = random;
+// =====================================================
+// GENEROWANIE PORTFELA
+// =====================================================
+function generateWallet() {
+    const ec = new elliptic.ec("secp256k1");
+    const key = ec.genKeyPair();
+
+    privateKey = key.getPrivate("hex");
+    publicKey = key.getPublic("hex");
+
+    address = "BbC" + sha256(publicKey).substring(0, 40);
+
+    document.getElementById("walletAddress").value = address;
+    document.getElementById("privateKey").value = privateKey;
+
     checkBalance();
 }
 
+function sha256(str) {
+    return CryptoJS.SHA256(str).toString();
+}
+
+// =====================================================
+// BALANCE
+// =====================================================
 async function checkBalance() {
-    const addr = document.getElementById("walletAddress").value || currentAddress;
-    if (!addr) return;
+    if (!address) return;
+
     try {
-        const res = await fetch(`\( {API}/balance/ \){addr}`);
+        const res = await fetch(`${API}/balance/${address}`);
         const data = await res.json();
-        document.getElementById("balanceDisplay").textContent = (data.balance || 0).toFixed(2) + " BBC";
-    } catch(e) {
-        document.getElementById("balanceDisplay").textContent = "142.85 BBC";
+        document.getElementById("balanceDisplay").textContent =
+            (data.balance || 0).toFixed(2) + " BBC";
+    } catch {
+        document.getElementById("balanceDisplay").textContent = "0.00 BBC";
     }
 }
 
+// =====================================================
+// MINING
+// =====================================================
 async function quickMine() {
-    if (!currentAddress) return alert("Najpierw wygeneruj adres!");
-    const modelId = document.getElementById("modelSelect").value;
+    if (!address) return alert("Najpierw wygeneruj portfel!");
+
     const status = document.getElementById("mineStatus");
     status.textContent = "⛏️ Kopanie w toku...";
+
     try {
-        const res = await fetch(`${API}/mine/start`, {
+        const res = await fetch(`${API}/mine`, { method: "POST" });
+        const data = await res.json();
+
+        status.textContent = "✔ Blok wykopany!";
+        checkBalance();
+    } catch {
+        status.textContent = "❌ Błąd kopania";
+    }
+}
+
+// =====================================================
+// WYSYŁANIE TRANSAKCJI
+// =====================================================
+async function sendTransaction() {
+    if (!privateKey || !publicKey || !address)
+        return alert("Najpierw wygeneruj portfel!");
+
+    const to = document.getElementById("toAddress").value;
+    const amount = Number(document.getElementById("amount").value);
+    const fee = Number(document.getElementById("fee").value);
+
+    if (!to || !amount) return alert("Wypełnij wszystkie pola!");
+
+    const ec = new elliptic.ec("secp256k1");
+    const key = ec.keyFromPrivate(privateKey, "hex");
+
+    const payload = {
+        from: address,
+        to,
+        amount,
+        fee,
+        timestamp: Date.now()
+    };
+
+    const hash = CryptoJS.SHA256(JSON.stringify(payload)).toString();
+    const signature = key.sign(hash).toDER("hex");
+
+    const tx = {
+        ...payload,
+        fromPublicKey: publicKey,
+        signature
+    };
+
+    const status = document.getElementById("txStatus");
+    status.textContent = "📤 Wysyłanie...";
+
+    try {
+        const res = await fetch(`${API}/transaction`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({ minerAddress: currentAddress,
+            body: JSON.stringify(tx)
+        });
+
+        const data = await res.json();
+
+        if (data.error) {
+            status.textContent = "❌ " + data.error;
+        } else {
+            status.textContent = "✔ Transakcja wysłana!";
+            checkBalance();
+        }
+    } catch {
+        status.textContent = "❌ Błąd wysyłania";
+    }
+}
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+</body>
+</html>
