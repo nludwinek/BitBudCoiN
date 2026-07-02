@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>BBC Status • Node Live</title>
+
+<style>
+    body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; }
+    header { background:#111; padding:20px; border-bottom:2px solid #222;
+             display:flex; justify-content:space-between; align-items:center; }
+    .logo { font-size:24px; color:#00ffaa; font-weight:bold; }
+    a { color:#888; text-decoration:none; }
+    main { max-width:900px; margin:30px auto; padding:20px; }
+
+    .card { background:#111; border:1px solid #222; border-radius:10px;
+            padding:25px; margin-bottom:25px; }
+    .card h2 { margin-top:0; color:#00ffaa; }
+
+    .value { font-size:32px; font-weight:bold; color:#00ffaa; margin:10px 0; }
+    .small { font-size:14px; color:#888; }
+
+    .online { color:#00ffaa; font-weight:bold; }
+    .offline { color:#ff4444; font-weight:bold; }
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="logo">BBC NODE STATUS vMax</div>
+    <a href="index.html">← Home</a>
+</header>
+
+<main>
+
+<div class="card">
+    <h2>Status Node’a</h2>
+    <div class="value" id="nodeStatus">Sprawdzanie...</div>
+    <div class="small" id="uptime">Uptime: ...</div>
+</div>
+
+<div class="card">
+    <h2>Blockchain</h2>
+    <div>Wysokość chainu:</div>
+    <div class="value" id="height">0</div>
+
+    <div>
