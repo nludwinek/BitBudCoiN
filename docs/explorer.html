@@ -5,14 +5,12 @@
 <title>BitBudCoin Explorer</title>
 
 <style>
-
 body{
     margin:0;
     background:#070707;
     color:#eee;
     font-family:Consolas,monospace;
 }
-
 header{
     background:#101010;
     border-bottom:2px solid #00ffaa;
@@ -21,96 +19,79 @@ header{
     align-items:center;
     padding:18px 35px;
 }
-
 .logoBox{
     display:flex;
     align-items:center;
     gap:15px;
 }
-
 .logoImg{
     height:50px;
 }
-
 .logoTitle{
     color:#00ffaa;
     font-size:28px;
     font-weight:bold;
 }
-
 .logoSub{
     color:#888;
     font-size:13px;
 }
-
 .networkBox{
     text-align:right;
     line-height:26px;
 }
-
 .networkBox span{
     color:#00ffaa;
     margin-left:10px;
 }
-
 main{
     max-width:1200px;
     margin:auto;
     padding:30px;
 }
-
 .stats{
     display:grid;
     grid-template-columns:repeat(5,1fr);
     gap:15px;
     margin-bottom:30px;
 }
-
 .card{
     background:#111;
     border:1px solid #222;
     border-radius:8px;
     padding:18px;
 }
-
 .card h3{
     margin:0;
     color:#00ffaa;
     font-size:14px;
 }
-
 .card p{
     margin-top:10px;
     font-size:24px;
     font-weight:bold;
 }
-
 table{
     width:100%;
     border-collapse:collapse;
     background:#111;
 }
-
 th{
     background:#181818;
     color:#00ffaa;
     padding:12px;
 }
-
 td{
     padding:12px;
     border-bottom:1px solid #222;
 }
-
 tr:hover{
     background:#161616;
 }
-
 .hash{
     color:#999;
     font-size:13px;
 }
-
 </style>
 
 </head>
@@ -120,31 +101,17 @@ tr:hover{
 <header>
 
 <div class="logoBox">
-
 <img src="logo.png" class="logoImg">
-
 <div>
-
-<div class="logoTitle">
-BitBudCoin Explorer
+<div class="logoTitle">BitBudCoin Explorer</div>
+<div class="logoSub">Mainnet Candidate</div>
 </div>
-
-<div class="logoSub">
-Mainnet Candidate
-</div>
-
-</div>
-
 </div>
 
 <div class="networkBox">
-
 <div>🌐 Network <span>BitBudCoin</span></div>
-
 <div>🟢 Status <span>ONLINE</span></div>
-
 <div>⛏ Block Time <span>8 min</span></div>
-
 </div>
 
 </header>
@@ -170,7 +137,7 @@ Mainnet Candidate
 
 <div class="card">
 <h3>Supply</h3>
-<p>2,000,700</p>
+<p id="supply">0</p>
 </div>
 
 <div class="card">
@@ -183,78 +150,65 @@ Mainnet Candidate
 <h2>Ostatnie bloki</h2>
 
 <table id="blocksTable">
-
 <thead>
-
 <tr>
-
 <th>#</th>
-
 <th>Hash</th>
-
 <th>Miner</th>
-
 <th>Reward</th>
-
 <th>Time</th>
-
 </tr>
-
 </thead>
-
-<tbody>
-
-</tbody>
-
+<tbody></tbody>
 </table>
 
 </main>
 
 <script>
 
-const API="http://localhost:5000";
+const API = "http://localhost:5000";
 
-async function loadBlocks(){
+async function loadBlocks() {
+    try {
+        const res = await fetch(API + "/chain");
+        const chain = await res.json();
 
-try{
+        document.getElementById("height").textContent = chain.length - 1;
 
-const res=await fetch(API+"/blocks");
+        // supply = suma wszystkich coinbase
+        let supply = 0;
+        chain.forEach(block => {
+            block.transactions.forEach(tx => {
+                if (tx.from === null) supply += tx.amount;
+            });
+        });
+        document.getElementById("supply").textContent = supply;
 
-const blocks=await res.json();
+        const tbody = document.querySelector("#blocksTable tbody");
+        tbody.innerHTML = "";
 
-document.getElementById("height").textContent=blocks.length;
+        chain.slice(-10).reverse().forEach(block => {
 
-const tbody=document.querySelector("#blocksTable tbody");
+            const miner = block.transactions[0]?.to || "Unknown";
 
-tbody.innerHTML="";
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${block.index}</td>
+                <td class="hash">${block.hash.substring(0,20)}...</td>
+                <td>${miner.substring(0,16)}...</td>
+                <td>50 BbC</td>
+                <td>${new Date(block.timestamp).toLocaleTimeString()}</td>
+            `;
+            tbody.appendChild(tr);
+        });
 
-blocks.slice(-10).reverse().forEach(b=>{
-
-const tr=document.createElement("tr");
-
-tr.innerHTML=`
-<td>${b.height}</td>
-<td class="hash">${b.hash.substring(0,20)}...</td>
-<td>${b.miner.substring(0,16)}...</td>
-<td>${b.reward} BbC</td>
-<td>${new Date(b.timestamp).toLocaleTimeString()}</td>
-`;
-
-tbody.appendChild(tr);
-
-});
-
-}catch(err){
-
-console.log(err);
-
-}
-
+    } catch (err) {
+        console.log(err);
+    }
 }
 
 loadBlocks();
-
-setInterval(loadBlocks,5000);
+setInterval(loadBlocks, 5000);
 
 </script>
 
