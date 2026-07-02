@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>BBC Address • Historia</title>
+
+<style>
+    body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; }
+    header { background:#111; padding:20px; border-bottom:2px solid #222; display:flex; justify-content:space-between; align-items:center; }
+    .logo { font-size:24px; color:#00ffaa; font-weight:bold; }
+    a { color:#888; text-decoration:none; }
+    main { max-width:1000px; margin:30px auto; padding:20px; }
+
+    .card { background:#111; border:1px solid #222; border-radius:10px; padding:20px; margin-bottom:25px; }
+    .card h2 { margin-top:0; color:#00ffaa; }
+
+    .balance { font-size:32px; font-weight:bold; color:#00ffaa; margin:15px 0; }
+
+    table { width:100%; border-collapse:collapse; background:#111; margin-top:20px; }
+    th { background:#181818; color:#00ffaa; padding:10px; }
+    td { padding:10px; border-bottom:1px solid #222; }
+    tr:hover { background:#161616; }
+
+    .hash { font-size:12px; color:#999; word-break:break-all; }
+    .incoming { color:#00ffaa; font-weight:bold; }
+    .outgoing { color:#ff6666; font-weight:bold; }
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="logo">BBC ADDRESS vMax</div>
+    <a href="wallet.html">← Portfel</a>
+</header>
+
+<main>
+
+<div class="card">
+    <h2>Adres BBC</h2>
+    <div id="address" style="font-size:18px;color:#ccc;">...</div>
+
+    <h2>Saldo</h2>
+    <div class="balance" id="balance">0 BBC</div>
+</div>
+
+<div class="card">
+    <h2>Historia transakcji</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>TXID</th>
+                <th>Typ</th>
+                <th>Ilość</th>
+                <th>Fee</th>
+                <th>Czas</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="txTable"></tbody>
+    </table>
+</div>
+
+</main>
+
+<script>
+const API = "http://localhost:5000";
+
+// Pobieranie adresu z URL
+const params = new URLSearchParams(window.location.search);
+const addr = params.get("id");
+
+if (!addr) {
+    alert("Brak adresu w URL!");
+}
+
+document.getElementById("address").textContent = addr;
+
+// Pobieranie salda
+async function loadBalance() {
+    try {
+        const res = await fetch(`${API}/balance/${addr}`);
+        const data = await res.json();
+        document.getElementById("balance").textContent = data.balance + " BBC";
+    } catch {
+        document.getElementById("balance").textContent = "Błąd";
+    }
+}
+
+// Pobieranie historii transakcji
+async function loadHistory() {
+    try {
+        const chainRes = await fetch(`${API}/chain`);
+        const chain = await chainRes.json();
+
+        const memRes = await fetch(`${API}/mempool`);
+        const mempool = await memRes.json();
+
+        const tbody = document.getElementById("txTable");
+        tbody.innerHTML = "";
+
+        let allTx = [];
+
+        // Transakcje w blokach
+        chain.forEach(block => {
+            block.transactions.forEach(tx => {
+                if (tx.from === addr || tx.to === addr) {
+                    allTx.push({
+                        ...tx,
+                        status: `✔ W bloku #${block.index}`
+                    });
+                }
+            });
+        });
+
+        // Transakcje w mempoolu
+        mempool.forEach(tx => {
+            if (tx.from === addr || tx.to ===
