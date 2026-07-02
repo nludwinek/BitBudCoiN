@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>BBC Network • Peers</title>
+
+<style>
+    body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; }
+    header { background:#111; padding:20px; border-bottom:2px solid #222; display:flex; justify-content:space-between; align-items:center; }
+    .logo { font-size:24px; color:#00ffaa; font-weight:bold; }
+    a { color:#888; text-decoration:none; }
+    main { max-width:900px; margin:30px auto; padding:20px; }
+
+    .card { background:#111; border:1px solid #222; border-radius:10px; padding:25px; margin-bottom:25px; }
+    .card h2 { margin-top:0; color:#00ffaa; }
+
+    table { width:100%; border-collapse:collapse; background:#111; margin-top:20px; }
+    th { background:#181818; color:#00ffaa; padding:10px; }
+    td { padding:10px; border-bottom:1px solid #222; }
+    tr:hover { background:#161616; }
+
+    .online { color:#00ffaa; font-weight:bold; }
+    .offline { color:#ff4444; font-weight:bold; }
+    .ping { color:#888; font-size:12px; }
+</style>
+</head>
+
+<body>
+
+<header>
+    <div class="logo">BBC NETWORK vMax</div>
+    <a href="index.html">← Home</a>
+</header>
+
+<main>
+
+<div class="card">
+    <h2>Lista węzłów P2P</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Adres</th>
+                <th>Status</th>
+                <th>Ping</th>
+                <th>Height</th>
+            </tr>
+        </thead>
+        <tbody id="peerTable"></tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Dodaj nowy peer</h2>
+    <input type="text" id="peerInput" placeholder="ws://IP:PORT" style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #333;color:#eee;border-radius:6px;">
+    <button onclick="addPeer()">Dodaj Peer</button>
+    <div id="addStatus" style="margin-top:10px;color:#00ffaa;"></div>
+</div>
+
+</main>
+
+<script>
+const API = "http://localhost:5000";
+
+// Lista znanych peerów (możesz dodać swoje)
+let peers = [
+    "ws://localhost:6001",
+    "ws://localhost:6002"
+];
+
+// Pingowanie peerów
+async function checkPeer(peer) {
+    const start = performance.now();
+
+    try {
+        const res = await fetch(API + "/info");
+        const localHeight = (await res.json()).height;
+
+        const ws = new WebSocket(peer);
+
+        return new Promise(resolve => {
+            ws.onopen = () => {
+                const ping = (performance.now() - start).toFixed(0);
+                resolve({ peer, status: "online", ping, height: localHeight });
+                ws.close();
+            };
+
+            ws.onerror = () => {
+                resolve({ peer, status: "offline", ping: "-", height: "-" });
+            };
+        });
+
+    } catch {
+        return { peer, status: "offline", ping: "-", height: "-" };
+    }
+}
+
+// Aktualizacja tabeli
+async function refreshPeers() {
+    const tbody = document.getElementById("peerTable");
+    tbody.innerHTML = "";
+
+    for (const p of peers) {
+        const info = await checkPeer(p);
+
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td>${info.peer}</td>
+            <td class="${info.status === "online" ? "online" : "offline"}">${info.status}</td>
+            <td class="ping">${info.ping} ms</td>
+            <td>${info.height}</td>
+        `;
+
+        tbody.appendChild(tr);
+    }
+}
+
+async function addPeer() {
+    const peer = document.getElementById("peerInput").value.trim();
+    const status = document.getElementById("addStatus");
+
+    if (!peer) return;
+
+    try {
+        const res = await fetch(API + "/peer", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({ peer })
+        });
+
+        const data = await res.json();
+
+        peers.push(peer);
+        status.textContent = "✔ Peer dodany!";
+        refreshPeers();
+
+    } catch {
+        status.textContent = "❌ Błąd dodawania peer'a";
+    }
+}
+
+refreshPeers();
+setInterval(refreshPeers, 7000);
+</script>
+
+</body>
+</html>
