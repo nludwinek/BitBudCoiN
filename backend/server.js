@@ -3,6 +3,7 @@ const cors = require("cors");
 const Blockchain = require("./bbcblockchain");
 const CONFIG = require("./config");
 const P2PNode = require("./p2p");
+const MiningPool = require("./pool");
 
 const app = express();
 app.use(cors());
@@ -11,6 +12,7 @@ app.use(express.json());
 const blockchain = new Blockchain();
 const p2p = new P2PNode(blockchain);
 p2p.start();
+const pool = new MiningPool(blockchain);
 
 // Logging
 app.use((req, res, next) => {
@@ -63,6 +65,28 @@ app.post("/peers/connect", (req, res) => {
     p2p.connectToPeer(address);
     res.json({status: "connecting", address});
 });
+
+app.get("/pool/work", (req, res) => {
+    const { minerAddress } = req.query;
+    res.json(pool.getWork(minerAddress));
+});
+
+app.post("/pool/submit", (req, res) => {
+    const { minerAddress, candidate } = req.body;
+    if (!minerAddress) return res.status(400).json({error: "Brak adresu górnika"});
+    if (!candidate) return res.status(400).json({error: "Brak pola candidate (wykopany szablon + nonce/hash)"});
+
+    const result = pool.submitShare(minerAddress, candidate);
+    if (result.blockFound) {
+        p2p.broadcastNewBlock(result.block);
+        console.log(`⛏️  Pula znalazła blok #${result.block.height} dzięki ${minerAddress}`);
+    }
+    res.json(result);
+});
+
+app.get("/pool/status", (req, res) => res.json(pool.getStatus()));
+
+app.get("/pool/credits/:address", (req, res) => res.json(pool.getCredits(req.params.address)));
 
 const PORT = CONFIG.API_PORT;
 const server = app.listen(PORT, () => {
