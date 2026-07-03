@@ -1,337 +1,92 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8">
-  <title>BitBudCoiN – BBC Hub</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    :root {
-      --bg: #050608;
-      --card: #101218;
-      --accent: #35ff7a;
-      --accent-soft: #1b3b26;
-      --text: #e5f7ea;
-      --muted: #7f8b86;
-      --danger: #ff4b6b;
-      --border: #202530;
-      --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: var(--font);
-      background: radial-gradient(circle at top, #0b1510 0, #050608 45%, #020304 100%);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    header {
-      padding: 1.2rem 1.5rem;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      backdrop-filter: blur(12px);
-      background: linear-gradient(to right, rgba(5,6,8,0.9), rgba(5,6,8,0.6));
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 0.7rem;
-    }
-    .logo-icon {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background:
-        radial-gradient(circle at 30% 20%, #35ff7a 0, #0b1510 40%, transparent 60%),
-        radial-gradient(circle at 70% 80%, #35ff7a 0, #0b1510 40%, transparent 60%);
-      box-shadow: 0 0 18px rgba(53,255,122,0.6);
-      position: relative;
-    }
-    .logo-icon::after {
-      content: "♣";
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #0b1510;
-      font-size: 18px;
-      font-weight: 700;
-      text-shadow: 0 0 4px rgba(0,0,0,0.8);
-    }
-    .logo-text h1 {
-      margin: 0;
-      font-size: 1.2rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .logo-text span {
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-    nav {
-      display: flex;
-      gap: 0.6rem;
-      flex-wrap: wrap;
-    }
-    nav a {
-      text-decoration: none;
-      color: var(--text);
-      font-size: 0.85rem;
-      padding: 0.4rem 0.8rem;
-      border-radius: 999px;
-      border: 1px solid transparent;
-      background: rgba(16,18,24,0.7);
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      transition: 0.18s ease;
-    }
-    nav a span {
-      font-size: 1rem;
-    }
-    nav a:hover {
-      border-color: var(--accent);
-      background: rgba(27,59,38,0.9);
-      box-shadow: 0 0 12px rgba(53,255,122,0.4);
-      transform: translateY(-1px);
-    }
-    main {
-      padding: 1.5rem;
-      max-width: 1100px;
-      margin: 0 auto;
-      width: 100%;
-      flex: 1;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr);
-      gap: 1.2rem;
-    }
-    @media (max-width: 900px) {
-      .grid { grid-template-columns: minmax(0, 1fr); }
-    }
-    .card {
-      background: linear-gradient(145deg, #0b0e13, #050608);
-      border-radius: 18px;
-      border: 1px solid var(--border);
-      padding: 1.1rem 1.2rem;
-      box-shadow: 0 18px 40px rgba(0,0,0,0.6);
-      position: relative;
-      overflow: hidden;
-    }
-    .card::before {
-      content: "";
-      position: absolute;
-      inset: -40%;
-      background:
-        radial-gradient(circle at 10% 0%, rgba(53,255,122,0.12), transparent 60%),
-        radial-gradient(circle at 90% 100%, rgba(53,255,122,0.08), transparent 60%);
-      opacity: 0.9;
-      pointer-events: none;
-    }
-    .card h2 {
-      margin: 0 0 0.6rem;
-      font-size: 1rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--accent);
-    }
-    .card p {
-      margin: 0 0 0.6rem;
-      font-size: 0.9rem;
-      color: var(--muted);
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.3rem;
-      padding: 0.25rem 0.7rem;
-      border-radius: 999px;
-      background: rgba(27,59,38,0.9);
-      border: 1px solid rgba(53,255,122,0.5);
-      font-size: 0.75rem;
-      color: var(--accent);
-      margin-bottom: 0.6rem;
-    }
-    .pill span {
-      font-size: 0.9rem;
-    }
-    .info-list {
-      list-style: none;
-      padding: 0;
-      margin: 0.4rem 0 0;
-      font-size: 0.85rem;
-    }
-    .info-list li {
-      display: flex;
-      justify-content: space-between;
-      padding: 0.25rem 0;
-      border-bottom: 1px dashed rgba(32,37,48,0.7);
-    }
-    .info-list li span:first-child {
-      color: var(--muted);
-    }
-    .info-list li span:last-child {
-      color: var(--text);
-      font-weight: 500;
-    }
-    .status-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      background: var(--accent);
-      box-shadow: 0 0 10px rgba(53,255,122,0.8);
-    }
-    .status-offline {
-      background: var(--danger);
-      box-shadow: 0 0 10px rgba(255,75,107,0.8);
-    }
-    .footer {
-      padding: 0.9rem 1.5rem;
-      border-top: 1px solid var(--border);
-      font-size: 0.8rem;
-      color: var(--muted);
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      background: rgba(5,6,8,0.95);
-    }
-    .leaf {
-      font-size: 1.1rem;
-      color: var(--accent);
-      filter: drop-shadow(0 0 6px rgba(53,255,122,0.7));
-    }
-    button.link-btn {
-      border: none;
-      background: transparent;
-      color: var(--accent);
-      font-size: 0.8rem;
-      cursor: pointer;
-      padding: 0;
-      text-decoration: underline;
-    }
-    .error {
-      color: var(--danger);
-      font-size: 0.8rem;
-      margin-top: 0.3rem;
-    }
-  </style>
-</head>
-<body>
-<header>
-  <div class="logo">
-    <div class="logo-icon"></div>
-    <div class="logo-text">
-      <h1>BitBudCoiN</h1>
-      <span>BBC – zielony blockchain edukacyjny</span>
-    </div>
-  </div>
-  <nav>
-    <a href="index.html"><span>🏠</span> Hub</a>
-    <a href="wallet.html"><span>👛</span> Portfel</a>
-    <a href="miner.html"><span⛏️</span> Koparka</a>
-    <a href="explorer.html"><span>🔍</span> Explorer</a>
-    <a href="network.html"><span>🌐</span> Sieć</a>
-  </nav>
-</header>
+<meta charset="UTF-8">
+<title>Zielony BBcChain IntegracyjnY</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-<main>
-  <div class="grid">
-    <section class="card">
-      <div class="pill">
-        <span class="leaf">🍃</span>
-        <span>BBC Backend</span>
-        <span id="backend-status-text">offline</span>
-      </div>
-      <h2>Stan sieci BitBudCoiN</h2>
-      <p>Podgląd podstawowych informacji o łańcuchu, nagrodach i stanie backendu. Idealne miejsce, żeby zobaczyć, czy wszystko żyje.</p>
-      <ul class="info-list" id="info-list">
-        <li><span>Wysokość łańcucha</span><span id="height">–</span></li>
-        <li><span>Liczba bloków</span><span id="blocks">–</span></li>
-        <li><span>Aktualna nagroda</span><span id="reward">–</span></li>
-        <li><span>Trudność</span><span id="difficulty">–</span></li>
-        <li><span>Sieć</span><span id="network">–</span></li>
-      </ul>
-      <div class="error" id="info-error"></div>
-    </section>
+<style>
+/* ====== MOTYW BBC ====== */
+:root {
+  --bg: #050608;
+  --card: #0b0e13;
+  --accent: #35ff7a;
+  --accent2: #7fffa8;
+  --text: #e5f7ea;
+  --muted: #9fbfae;
+  --border: #1b3b26;
+  --flame: #6ecbff;     /* jasno błękitne płomienie */
+  --smoke: #35ff7a55;   /* zielony dym */
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
 
-    <section class="card">
-      <h2>Wejścia do ekosystemu</h2>
-      <p>Wybierz, co chcesz zrobić w BBC – kopać, sprawdzić balans, podejrzeć sieć albo eksplorować bloki.</p>
-      <ul class="info-list">
-        <li><span>👛 Portfel</span><span><button class="link-btn" onclick="go('wallet.html')">Sprawdź balans adresu</button></span></li>
-        <li><span>⛏️ Koparka</span><span><button class="link-btn" onclick="go('miner.html')">Rozpocznij kopanie</button></span></li>
-        <li><span>🔍 Explorer</span><span><button class="link-btn" onclick="go('explorer.html')">Zobacz łańcuch</button></span></li>
-        <li><span>🌐 Sieć</span><span><button class="link-btn" onclick="go('network.html')">Sprawdź peer‑to‑peer</button></span></li>
-      </ul>
-    </section>
-  </div>
-</main>
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: radial-gradient(circle at top, #0b1510 0, #050608 45%, #020304 100%);
+  color: var(--text);
+  overflow-x: hidden;
+}
 
-<footer class="footer">
-  <span>BitBudCoiN • BBC • edukacyjny blockchain w ciemnym motywie z zieloną konopią 🍃</span>
-  <span id="backend-status-pill">
-    <span class="status-dot status-offline" id="backend-dot"></span>
-    <span>Backend: <strong id="backend-status-label">offline</strong></span>
-  </span>
-</footer>
+/* ====== ANIMACJE DYM + PŁOMIENIE ====== */
+.smoke {
+  position: fixed;
+  top: -20%;
+  left: 0;
+  width: 100%;
+  height: 140%;
+  background: radial-gradient(circle, var(--smoke) 0%, transparent 60%);
+  filter: blur(40px);
+  animation: smokeMove 18s infinite linear;
+  pointer-events: none;
+  z-index: -1;
+}
 
-<script>
-  const API_BASE = "https://twoj-backend-url"; // PODMIEŃ NA SWÓJ BACKEND
+@keyframes smokeMove {
+  0% { transform: translateX(-20%) translateY(0); }
+  50% { transform: translateX(20%) translateY(-10%); }
+  100% { transform: translateX(-20%) translateY(0); }
+}
 
-  function go(path) {
-    window.location.href = path;
-  }
+.flames {
+  position: fixed;
+  bottom: -10%;
+  left: 0;
+  width: 100%;
+  height: 40%;
+  background: radial-gradient(circle at bottom, var(--flame) 0%, transparent 70%);
+  filter: blur(35px);
+  animation: flamesPulse 4s infinite ease-in-out;
+  pointer-events: none;
+  z-index: -1;
+}
 
-  async function loadInfo() {
-    const errorEl = document.getElementById("info-error");
-    errorEl.textContent = "";
-    try {
-      const res = await fetch(API_BASE + "/info");
-      if (!res.ok) throw new Error("Backend niedostępny");
-      const data = await res.json();
+@keyframes flamesPulse {
+  0% { opacity: 0.35; }
+  50% { opacity: 0.7; }
+  100% { opacity: 0.35; }
+}
 
-      document.getElementById("height").textContent = data.height ?? "–";
-      document.getElementById("blocks").textContent = data.blocks ?? "–";
-      document.getElementById("reward").textContent = data.currentReward ?? "–";
-      document.getElementById("difficulty").textContent = data.difficulty ?? "–";
-      document.getElementById("network").textContent = data.networkName ?? "BBC";
+/* ====== HEADER ====== */
+header {
+  padding: 1.2rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(5,6,8,0.85);
+  backdrop-filter: blur(12px);
+}
 
-      setBackendStatus(true);
-    } catch (e) {
-      errorEl.textContent = "Nie udało się pobrać informacji o łańcuchu. Sprawdź, czy backend działa.";
-      setBackendStatus(false);
-    }
-  }
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
 
-  function setBackendStatus(online) {
-    const dot = document.getElementById("backend-dot");
-    const label = document.getElementById("backend-status-label");
-    const text = document.getElementById("backend-status-text");
-
-    if (online) {
-      dot.classList.remove("status-offline");
-      dot.classList.add("status-online");
-      dot.style.background = "var(--accent)";
-      label.textContent = "online";
-      text.textContent = "online";
-    } else {
-      dot.classList.add("status-offline");
-      dot.style.background = "var(--danger)";
-      label.textContent = "offline";
-      text.textContent = "offline";
-    }
-  }
-
-  loadInfo();
-</script>
-</body>
-</html>
+.logo-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 20%, var(--accent)
