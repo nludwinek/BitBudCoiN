@@ -56,6 +56,12 @@ const CONFIG = {
     // -----------------------------
     // POOL
     // -----------------------------
+    // Adres portfela puli - na niego trafia coinbase KAŻDEGO bloku znalezionego
+    // przez pulę (tak to działa naprawdę - miner nie dostaje nagrody on-chain
+    // bezpośrednio, tylko "kredyt" rozliczany przez pulę, patrz pool.js).
+    // To pole nie istniało w oryginalnym configu - PODMIEŃ na swój prawdziwy adres.
+    POOL_ADDRESS: "BbC0000000000000000000000000000000000000",
+
     POOL_FEE: 0.02,
 
     SHARE_DIFFICULTY: 2,
