@@ -2,12 +2,15 @@ const express = require("express");
 const cors = require("cors");
 const Blockchain = require("./bbcblockchain");
 const CONFIG = require("./config");
+const P2PNode = require("./p2p");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const blockchain = new Blockchain();
+const p2p = new P2PNode(blockchain);
+p2p.start();
 
 // Logging
 app.use((req, res, next) => {
@@ -32,6 +35,7 @@ app.post("/mine/start", async (req, res) => {
 
     try {
         const block = await blockchain.createNewBlock(minerAddress);
+        p2p.broadcastNewBlock(block);
         res.json({
             status: "mined",
             blockHeight: block.height,
@@ -51,15 +55,25 @@ app.get("/balance/:address", (req, res) => {
     });
 });
 
+app.get("/peers", (req, res) => res.json(p2p.getStatus()));
+
+app.post("/peers/connect", (req, res) => {
+    const { address } = req.body;
+    if (!address) return res.status(400).json({error: "Brak adresu (oczekiwano \"host:port\")"});
+    p2p.connectToPeer(address);
+    res.json({status: "connecting", address});
+});
+
 const PORT = CONFIG.API_PORT;
 const server = app.listen(PORT, () => {
     console.log(`🚀 BBC Backend działa na porcie ${PORT}`);
 });
 
-// Łagodne zamknięcie - domykamy bazę, żeby nie zostawić otwartego pliku/WAL-a
+// Łagodne zamknięcie - domykamy P2P i bazę, żeby nie zostawić otwartych gniazd/pliku
 function shutdown() {
     console.log("\n🛑 Zamykanie serwera...");
     server.close(() => {
+        p2p.close();
         blockchain.close();
         process.exit(0);
     });
