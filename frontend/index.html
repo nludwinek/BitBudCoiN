@@ -2,63 +2,221 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>BitBudCoiN • Bud Bitcoin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>BitBudCoin Core</title>
+
+<link rel="icon" href="logo.png">
 
 <style>
-    body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; text-align:center; }
-    header { padding:60px 20px 40px; background:linear-gradient(#111, #0a0a0a); }
-    .logo { width: 200px; filter: drop-shadow(0 0 25px #00ff88); margin-bottom: 20px; }
-    h1 { color:#00ffaa; font-size:42px; margin:10px 0; text-shadow:0 0 20px #00ff88; }
-    .tagline { color:#aaa; font-size:19px; margin-bottom:40px; }
-    .btn {
-        display:inline-block; margin:12px; padding:16px 32px; background:#00ffaa; color:#000;
-        font-weight:bold; border-radius:8px; text-decoration:none; font-size:17px;
-    }
-    .btn:hover { background:#00dd99; transform:scale(1.05); }
-    #statusBox { margin-top:25px; font-size:18px; color:#00ffaa; }
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+
+    background:#070707;
+    color:#f0f0f0;
+
+    font-family:Segoe UI,Arial,sans-serif;
+
+}
+
+header{
+
+    position:sticky;
+
+    top:0;
+
+    background:#111;
+
+    border-bottom:2px solid #00ffaa;
+
+    display:flex;
+
+    justify-content:space-between;
+
+    align-items:center;
+
+    padding:18px 40px;
+
+    z-index:100;
+
+}
+
+.logo{
+
+    display:flex;
+
+    align-items:center;
+
+    gap:15px;
+
+}
+
+.logo img{
+
+    width:56px;
+
+}
+
+.logo h1{
+
+    color:#00ffaa;
+
+    font-size:30px;
+
+}
+
+nav{
+
+    display:flex;
+
+    gap:18px;
+
+}
+
+nav a{
+
+    color:#ddd;
+
+    text-decoration:none;
+
+    transition:.3s;
+
+}
+
+nav a:hover{
+
+    color:#00ffaa;
+
+}
+
+.hero{
+
+    padding:80px 30px;
+
+    text-align:center;
+
+}
+
+.hero h2{
+
+    color:#00ffaa;
+
+    font-size:54px;
+
+}
+
+.hero p{
+
+    color:#bbb;
+
+    max-width:900px;
+
+    margin:30px auto;
+
+    line-height:1.7;
+
+    font-size:20px;
+
+}
+
+.buttons{
+
+    display:flex;
+
+    justify-content:center;
+
+    gap:20px;
+
+    flex-wrap:wrap;
+
+}
+
+.btn{
+
+    padding:15px 30px;
+
+    border-radius:8px;
+
+    text-decoration:none;
+
+    background:#00ffaa;
+
+    color:#000;
+
+    font-weight:bold;
+
+    transition:.3s;
+
+}
+
+.btn:hover{
+
+    transform:translateY(-2px);
+
+    box-shadow:0 0 18px #00ffaa;
+
+}
+
 </style>
+
 </head>
 
 <body>
 
 <header>
-    <img src="https://i.imgur.com/OruL3.png" class="logo" alt="BitBudCoiN">
-    <h1>BitBudCoiN</h1>
-    <p class="tagline">Bud Bitcoin • Decentralizowana kopalnia</p>
 
-    <div>
-        <a class="btn" href="miner.html">🚀 Koparka vMax</a>
-        <a class="btn" href="wallet.html">💰 Portfel</a>
-        <a class="btn" href="explorer.html">📊 Explorer</a>
-    </div>
+<div class="logo">
 
-    <div id="statusBox">Sprawdzanie statusu sieci...</div>
+<img src="logo.png">
+
+<h1>BitBudCoin</h1>
+
+</div>
+
+<nav>
+
+<a href="index.html">Home</a>
+
+<a href="explorer.html">Explorer</a>
+
+<a href="wallet.html">Wallet</a>
+
+<a href="miner.html">Miner</a>
+
+<a href="network.html">Network</a>
+
+<a href="stats.html">Stats</a>
+
+</nav>
+
 </header>
 
-<script>
-const API = "http://localhost:5000";
+<section class="hero">
 
-async function checkNodeStatus() {
-    const box = document.getElementById("statusBox");
+<h2>BitBudCoin Mainnet</h2>
 
-    try {
-        const res = await fetch(API + "/info");
-        const data = await res.json();
+<p>
 
-        box.innerHTML = `
-            🟢 Node Online<br>
-            Sieć: <span style="color:#00ffaa">${data.network}</span><br>
-            Wysokość: <span style="color:#00ffaa">${data.height}</span>
-        `;
-    } catch {
-        box.innerHTML = "🔴 Node Offline";
-        box.style.color = "#ff4444";
-    }
-}
+Open-source blockchain project focused on a lightweight,
+community-driven network with Proof of Work, peer-to-peer
+connectivity and a transparent block explorer.
 
-checkNodeStatus();
-setInterval(checkNodeStatus, 5000);
-</script>
+</p>
 
-</body>
-</html>
+<div class="buttons">
+
+<a class="btn" href="explorer.html">Open Explorer</a>
+
+<a class="btn" href="wallet.html">Wallet</a>
+
+<a class="btn" href="miner.html">Start Mining</a>
+
+</div>
+
+</section>
