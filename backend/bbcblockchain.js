@@ -317,6 +317,16 @@ class Blockchain {
         this.storage.close();
     }
 
+    // Cienkie delegatory do rozliczeń puli kopania (pool.js) - blockchain zostaje
+    // jedynym miejscem dotykającym storage bezpośrednio
+    saveCredit(credit) {
+        this.storage.saveCredit(credit);
+    }
+
+    getCredits(minerAddress) {
+        return this.storage.getCredits(minerAddress);
+    }
+
     getInfo() {
         const latest = this.getLatestBlock();
         const period = CONFIG.DIFFICULTY_ADJUSTMENT;
