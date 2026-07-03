@@ -44,11 +44,31 @@ class Storage {
         this.db.exec("CREATE INDEX IF NOT EXISTS idx_tx_to ON transactions(to_address)");
         this.db.exec("CREATE INDEX IF NOT EXISTS idx_tx_from ON transactions(from_address)");
 
+        // Rozliczenia puli: ile dany adres zarobił udziałem w danej rundzie (bloku).
+        // To dług/należność, NIE przelew on-chain - patrz komentarz w pool.js.
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS pool_credits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                minerAddress TEXT NOT NULL,
+                blockHeight INTEGER NOT NULL,
+                shares INTEGER NOT NULL,
+                amount REAL NOT NULL,
+                timestamp INTEGER NOT NULL
+            )
+        `);
+        this.db.exec("CREATE INDEX IF NOT EXISTS idx_credits_miner ON pool_credits(minerAddress)");
+
         this._insertBlock = this.db.prepare(
             "INSERT INTO blocks (height, timestamp, previousHash, hash, nonce, difficulty) VALUES (?, ?, ?, ?, ?, ?)"
         );
         this._insertTx = this.db.prepare(
             "INSERT INTO transactions (blockHeight, from_address, to_address, amount, type) VALUES (?, ?, ?, ?, ?)"
+        );
+        this._insertCredit = this.db.prepare(
+            "INSERT INTO pool_credits (minerAddress, blockHeight, shares, amount, timestamp) VALUES (?, ?, ?, ?, ?)"
+        );
+        this._selectCredits = this.db.prepare(
+            "SELECT * FROM pool_credits WHERE minerAddress = ? ORDER BY blockHeight ASC"
         );
     }
 
@@ -123,6 +143,22 @@ class Storage {
 
     close() {
         this.db.close();
+    }
+
+    saveCredit(credit) {
+        this._insertCredit.run(
+            credit.minerAddress,
+            credit.blockHeight,
+            credit.shares,
+            credit.amount,
+            credit.timestamp
+        );
+    }
+
+    getCredits(minerAddress) {
+        const rows = this._selectCredits.all(minerAddress);
+        const totalCredited = rows.reduce((sum, r) => sum + r.amount, 0);
+        return { minerAddress, totalCredited, entries: rows };
     }
 }
 
