@@ -23,12 +23,29 @@
 body {
   margin: 0;
   font-family: var(--font);
-  background: radial-gradient(circle at top, #0b1510 0, #050608 45%, #020304 100%);
+  background: #050608;
   color: var(--text);
   overflow-x: hidden;
 }
 
-/* ====== ANIMACJE DYM + PŁOMIENIE ====== */
+/* ====== KONOPIA INDYJSKA ====== */
+.big-weed {
+  width: 160px;
+  height: 160px;
+  margin: 1.2rem auto 0.5rem;
+  background: url('https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Cannabis_leaf.svg/1024px-Cannabis_leaf.svg.png')
+              center/contain no-repeat;
+  filter: drop-shadow(0 0 25px rgba(53,255,122,0.9));
+  animation: weedPulse 3s infinite ease-in-out;
+}
+
+@keyframes weedPulse {
+  0% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(53,255,122,0.6)); }
+  50% { transform: scale(1.08); filter: drop-shadow(0 0 35px rgba(53,255,122,1)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(53,255,122,0.6)); }
+}
+
+/* ====== ZIELONY DYM ====== */
 .smoke {
   position: fixed;
   top: -20%;
@@ -48,6 +65,7 @@ body {
   100% { transform: translateX(-20%) translateY(0); }
 }
 
+/* ====== BŁĘKITNE PŁOMIENIE ====== */
 .flames {
   position: fixed;
   bottom: -10%;
@@ -146,13 +164,9 @@ nav a:hover {
 /* ====== POWITANIE ====== */
 .welcome {
   text-align: center;
-  margin: 2.2rem auto;
-  padding: 2rem 1rem;
+  margin: 1.5rem auto;
+  padding: 1.5rem 1rem;
   max-width: 900px;
-  background: linear-gradient(145deg, #0b0e13, #050608);
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  box-shadow: 0 0 35px rgba(53,255,122,0.25);
 }
 
 .welcome-title {
@@ -251,6 +265,8 @@ footer {
     <a href="network.html">🌐 Sieć</a>
   </nav>
 </header>
+
+<div class="big-weed"></div>
 
 <section class="welcome">
   <h1 class="welcome-title">🍃 Zielony <span>BBcChain IntegracyjnY</span></h1>
