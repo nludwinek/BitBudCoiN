@@ -5,8 +5,13 @@ const CONFIG = require("./config");
 const P2PNode = require("./p2p");
 const MiningPool = require("./pool");
 const Mempool = require("./mempool");
+const { createRateLimiter } = require("./rate-limit");
 
 const app = express();
+// Wymagane, gdy serwer stoi za reverse proxy (Caddyfile w tym projekcie) -
+// inaczej req.ip to zawsze adres proxy i rate-limit dotyczy wszystkich naraz.
+// Jeśli NIE używasz reverse proxy, usuń tę linię.
+app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json());
 
@@ -15,6 +20,16 @@ const mempool = new Mempool(blockchain, blockchain.storage);
 const p2p = new P2PNode(blockchain, { mempool });
 p2p.start();
 const pool = new MiningPool(blockchain, { mempool });
+
+// /mine/start kopie SYNCHRONICZNIE (realny koszt CPU serwera za każde żądanie) -
+// limit bardzo ostry. /pool/work i /pool/submit to normalny, częsty ruch
+// prawdziwych górników - limit swobodny. /transactions/send umiarkowany,
+// żeby nie zapychać mempoola śmieciowymi przelewami.
+const strictLimiter = createRateLimiter({ windowMs: 60_000, max: 5, name: "/mine/start" });
+const poolLimiter = createRateLimiter({ windowMs: 60_000, max: 300, name: "puli" });
+const txLimiter = createRateLimiter({ windowMs: 60_000, max: 30, name: "transakcji" });
+const defaultLimiter = createRateLimiter({ windowMs: 60_000, max: 120, name: "API" });
+app.use(defaultLimiter);
 
 // Logging
 app.use((req, res, next) => {
@@ -32,7 +47,7 @@ app.get("/miners/models", (req, res) => {
     ]);
 });
 
-app.post("/mine/start", async (req, res) => {
+app.post("/mine/start", strictLimiter, async (req, res) => {
     console.log("Żądanie kopania:", req.body);
     const { minerAddress } = req.body;
     if (!minerAddress) return res.status(400).json({error: "Brak adresu"});
@@ -63,7 +78,7 @@ app.get("/balance/:address", (req, res) => {
     });
 });
 
-app.post("/transactions/send", (req, res) => {
+app.post("/transactions/send", txLimiter, (req, res) => {
     const result = mempool.addTransaction(req.body);
     if (!result.accepted) return res.status(400).json(result);
     res.json(result);
@@ -80,12 +95,12 @@ app.post("/peers/connect", (req, res) => {
     res.json({status: "connecting", address});
 });
 
-app.get("/pool/work", (req, res) => {
+app.get("/pool/work", poolLimiter, (req, res) => {
     const { minerAddress } = req.query;
     res.json(pool.getWork(minerAddress));
 });
 
-app.post("/pool/submit", (req, res) => {
+app.post("/pool/submit", poolLimiter, (req, res) => {
     const { minerAddress, candidate } = req.body;
     if (!minerAddress) return res.status(400).json({error: "Brak adresu górnika"});
     if (!candidate) return res.status(400).json({error: "Brak pola candidate (wykopany szablon + nonce/hash)"});
@@ -103,8 +118,12 @@ app.get("/pool/status", (req, res) => res.json(pool.getStatus()));
 app.get("/pool/credits/:address", (req, res) => res.json(pool.getCredits(req.params.address)));
 
 const PORT = CONFIG.API_PORT;
-const server = app.listen(PORT, () => {
-    console.log(`🚀 BBC Backend działa na porcie ${PORT}`);
+// Domyślnie tylko localhost - Caddy/nginx (Caddyfile w tym projekcie) łączy się
+// z tym samym hostem po loopbacku. Jeśli proxy działa na INNEJ maszynie/kontenerze,
+// ustaw HOST=0.0.0.0 (i zabezpiecz to firewallem).
+const HOST = process.env.HOST || "127.0.0.1";
+const server = app.listen(PORT, HOST, () => {
+    console.log(`🚀 BBC Backend działa na ${HOST}:${PORT}`);
 });
 
 // Łagodne zamknięcie - domykamy P2P i bazę, żeby nie zostawić otwartych gniazd/pliku
