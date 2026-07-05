@@ -4,15 +4,17 @@ const Blockchain = require("./bbcblockchain");
 const CONFIG = require("./config");
 const P2PNode = require("./p2p");
 const MiningPool = require("./pool");
+const Mempool = require("./mempool");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const blockchain = new Blockchain();
-const p2p = new P2PNode(blockchain);
+const mempool = new Mempool(blockchain, blockchain.storage);
+const p2p = new P2PNode(blockchain, { mempool });
 p2p.start();
-const pool = new MiningPool(blockchain);
+const pool = new MiningPool(blockchain, { mempool });
 
 // Logging
 app.use((req, res, next) => {
@@ -36,13 +38,16 @@ app.post("/mine/start", async (req, res) => {
     if (!minerAddress) return res.status(400).json({error: "Brak adresu"});
 
     try {
-        const block = await blockchain.createNewBlock(minerAddress);
+        const selected = mempool.selectForBlock();
+        const block = await blockchain.createNewBlock(minerAddress, selected);
+        mempool.pruneConfirmed(block);
         p2p.broadcastNewBlock(block);
         res.json({
             status: "mined",
             blockHeight: block.height,
             hash: block.hash,
-            reward: block.reward
+            reward: block.reward,
+            transactionsIncluded: selected.length
         });
     } catch (e) {
         console.error("Błąd:", e.message);
@@ -53,9 +58,18 @@ app.post("/mine/start", async (req, res) => {
 app.get("/balance/:address", (req, res) => {
     res.json({
         address: req.params.address,
-        balance: blockchain.getBalance(req.params.address)
+        balance: blockchain.getBalance(req.params.address),
+        pendingAwareBalance: mempool.getPendingAwareBalance(req.params.address)
     });
 });
+
+app.post("/transactions/send", (req, res) => {
+    const result = mempool.addTransaction(req.body);
+    if (!result.accepted) return res.status(400).json(result);
+    res.json(result);
+});
+
+app.get("/transactions/pending", (req, res) => res.json(mempool.getPending()));
 
 app.get("/peers", (req, res) => res.json(p2p.getStatus()));
 
