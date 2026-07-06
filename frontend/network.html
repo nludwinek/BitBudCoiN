@@ -1,136 +1,86 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="UTF-8">
-  <title>BBC Sieć – peer‑to‑peer</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { margin:0; font-family:system-ui; background:#050608; color:#e5f7ea; }
-    main { max-width:700px; margin:0 auto; padding:1.5rem; }
-    h1 { margin:0 0 0.5rem; }
-    p { margin:0 0 1rem; color:#7f8b86; }
-    .card {
-      background:#0b0e13;
-      border-radius:16px;
-      border:1px solid #202530;
-      padding:1.1rem;
-      box-shadow:0 18px 40px rgba(0,0,0,0.6);
-    }
-    .peers { list-style:none; padding:0; margin:0; font-size:0.9rem; }
-    .peers li {
-      padding:0.35rem 0;
-      border-bottom:1px dashed rgba(32,37,48,0.7);
-      display:flex;
-      justify-content:space-between;
-    }
-    .error { color:#ff4b6b; font-size:0.8rem; margin-top:0.4rem; }
-    label { display:block; font-size:0.85rem; margin-top:0.8rem; color:#7f8b86; }
-    input {
-      width:100%;
-      padding:0.5rem 0.7rem;
-      border-radius:999px;
-      border:1px solid #202530;
-      background:#050608;
-      color:#e5f7ea;
-      outline:none;
-      font-size:0.9rem;
-      margin-top:0.3rem;
-    }
-    input:focus {
-      border-color:#35ff7a;
-      box-shadow:0 0 10px rgba(53,255,122,0.5);
-    }
-    button {
-      margin-top:0.5rem;
-      width:100%;
-      padding:0.55rem 0.8rem;
-      border-radius:999px;
-      border:none;
-      background:#1b3b26;
-      color:#35ff7a;
-      font-weight:600;
-      cursor:pointer;
-      font-size:0.9rem;
-      box-shadow:0 0 12px rgba(53,255,122,0.4);
-    }
-    button:hover { filter:brightness(1.1); }
-    a.back { display:inline-block; margin-bottom:0.8rem; font-size:0.85rem; color:#35ff7a; text-decoration:none; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sieć — BitBudCoin</title>
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
-<main>
-  <a href="index.html" class="back">← Powrót do hubu</a>
-  <h1>BBC Sieć</h1>
-  <p>Podgląd peer‑to‑peer oraz możliwość ręcznego podłączenia się do innego węzła.</p>
 
-  <div class="card">
-    <h2 style="font-size:0.95rem; margin:0 0 0.6rem;">Aktywne peery</h2>
-    <ul class="peers" id="peers"></ul>
-    <div class="error" id="error"></div>
+<nav class="nav">
+    <a href="index.html" class="brand"><img src="assets/logo.svg" alt="BitBudCoin"> BitBudCoin</a>
+    <div class="nav-links">
+        <a href="index.html" id="nav-index">Start</a>
+        <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+        <a href="explorer.html" id="nav-explorer">Explorer</a>
+        <a href="miner.html" id="nav-miner">Miner</a>
+        <a href="network.html" id="nav-network">Sieć</a>
+        <a href="peers.html" id="nav-peers">Peery</a>
+        <a href="exchange.html" id="nav-exchange">Giełda</a>
+        <a href="address.html" id="nav-address">Adres</a>
+        <a href="docks.html" id="nav-docks">Docs</a>
+    </div>
+    <div class="nav-status">
+        <span class="flame-pill" id="nav-status"><span class="flame-dot"></span><span id="nav-status-text">łączę…</span></span>
+    </div>
+</nav>
 
-    <label for="peerAddress">Dodaj peer (host:port)</label>
-    <input id="peerAddress" placeholder="np. 127.0.0.1:6001">
-    <button onclick="connectPeer()">Połącz z peerem</button>
-  </div>
-</main>
+<div class="page">
+    <h1 style="margin-top:32px;">Parametry sieci</h1>
+    <p>Zdrowie łańcucha i stałe protokołu — to, na czym zgadzają się wszystkie węzły.</p>
 
+    <div class="card">
+        <div id="validity-row" style="display:flex; align-items:center; gap:10px; padding-bottom:16px; margin-bottom:16px; border-bottom:1px solid var(--border);">
+            <span class="skeleton" style="width:120px; height:20px; display:inline-block;"></span>
+        </div>
+        <table>
+            <tbody id="params-tbody">
+                <tr><td colspan="2" class="skeleton">ładowanie ładowanie ładowanie</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<footer>BitBudCoin (BbC) · sieć proof-of-work · <a href="docks.html">dokumentacja</a></footer>
+
+<script src="assets/api.js"></script>
+<script src="assets/nav.js"></script>
 <script>
-  const API_BASE = "https://twoj-backend-url"; // PODMIEŃ
+setActiveNav("nav-network");
 
-  async function loadPeers() {
-    const list = document.getElementById("peers");
-    const errorEl = document.getElementById("error");
-    list.innerHTML = "";
-    errorEl.textContent = "";
+function row(label, value) {
+    return `<tr><td style="color:var(--text-dim); width:45%;">${label}</td><td>${value}</td></tr>`;
+}
 
+async function load() {
     try {
-      const res = await fetch(API_BASE + "/peers");
-      if (!res.ok) throw new Error("Backend niedostępny");
-      const data = await res.json();
+        const info = await apiGet("/info");
+        document.getElementById("validity-row").innerHTML = info.isValid
+            ? `<span class="flame-pill lit"><span class="flame-dot"></span></span> <strong style="color:var(--leaf)">Łańcuch poprawny</strong>`
+            : `<span style="color:var(--danger)">⚠ Łańcuch NIEPOPRAWNY</span>`;
 
-      if (!data.peers || !data.peers.length) {
-        list.innerHTML = "<li><span>Brak aktywnych peerów</span><span>–</span></li>";
-        return;
-      }
-
-      data.peers.forEach(p => {
-        const li = document.createElement("li");
-        li.innerHTML = `<span>${p.address}</span><span>${p.status || "online"}</span>`;
-        list.appendChild(li);
-      });
+        document.getElementById("params-tbody").innerHTML = [
+            row("Sieć", `${info.network} (${info.symbol})`),
+            row("Chain ID", info.chainId),
+            row("Wersja protokołu", info.version),
+            row("Wysokość", "#" + fmtNumber(info.height, 0)),
+            row("Trudność bieżąca", fmtNumber(info.difficulty, 0)),
+            row("Bloków do przeliczenia trudności", fmtNumber(info.blocksUntilRetarget, 0)),
+            row("Bloków do halvingu", fmtNumber(info.blocksUntilHalving, 0)),
+            row("Podaż w obiegu", fmtNumber(info.circulatingSupply) + " BbC"),
+            row("Pułap podaży", fmtNumber(info.maxSupply) + " BbC"),
+            row("Premine", fmtNumber(info.premine) + " BbC"),
+        ].join("");
     } catch (e) {
-      errorEl.textContent = "Nie udało się pobrać listy peerów.";
+        document.getElementById("validity-row").innerHTML = `<div class="error-banner">Brak połączenia z węzłem: ${escapeHtml(e.message)}</div>`;
+        document.getElementById("params-tbody").innerHTML = "";
     }
-  }
-
-  async function connectPeer() {
-    const addr = document.getElementById("peerAddress").value.trim();
-    const errorEl = document.getElementById("error");
-    errorEl.textContent = "";
-
-    if (!addr) {
-      errorEl.textContent = "Podaj adres w formacie host:port.";
-      return;
-    }
-
-    try {
-      const res = await fetch(API_BASE + "/peers/connect", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ address: addr })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Błąd połączenia");
-      errorEl.style.color = "#35ff7a";
-      errorEl.textContent = `Łączenie z peerem: ${data.address}`;
-      setTimeout(loadPeers, 1500);
-    } catch (e) {
-      errorEl.style.color = "#ff4b6b";
-      errorEl.textContent = "Nie udało się połączyć z peerem: " + e.message;
-    }
-  }
-
-  loadPeers();
+}
+load();
 </script>
 </body>
 </html>
