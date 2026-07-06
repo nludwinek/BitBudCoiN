@@ -1,487 +1,109 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BBC Mining Network - vMax Control Panel</title>
-    <style>
-        /* MROCZNY MOTYW BAZOWY */
-        :root {
-            --bg-color: #06080c;
-            --card-bg: #0d1117;
-            --neon-green: #00ff66;
-            --neon-blue: #00d2ff;
-            --text-color: #e2e8f0;
-            --text-muted: #8b949e;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            min-height: 100vh;
-            overflow-x: hidden;
-            position: relative;
-        }
-
-        /* ZIELONY NEONOWY DYM (EFEKT W TLE) */
-        body::before, body::after {
-            content: "";
-            position: fixed;
-            width: 400px;
-            height: 400px;
-            background: radial-gradient(circle, rgba(0, 255, 102, 0.15) 0%, rgba(0,0,0,0) 70%);
-            border-radius: 50%;
-            z-index: -1;
-            filter: blur(60px);
-            animation: smokeMovement 10s infinite alternate ease-in-out;
-        }
-        body::before { top: -100px; left: -100px; }
-        body::after { bottom: -100px; right: -100px; animation-delay: 5s; }
-
-        @keyframes smokeMovement {
-            0% { transform: translate(0, 0) scale(1); filter: blur(60px); }
-            100% { transform: translate(80px, 50px) scale(1.2); filter: blur(80px); rgba(0, 255, 102, 0.25); }
-        }
-
-        /* NAGŁÓWEK Z LOGO KONOPI */
-        header {
-            text-align: center;
-            padding: 30px 20px;
-            background: rgba(13, 17, 23, 0.8);
-            border-bottom: 2px solid var(--neon-green);
-            box-shadow: 0 0 20px rgba(0, 255, 102, 0.3);
-            backdrop-filter: blur(10px);
-        }
-
-        .logo-container {
-            margin-bottom: 10px;
-        }
-
-        /* JASNO ZIELONA KONOPIA INDYJSKA (SVG NEON) */
-        .cannabis-icon {
-            width: 80px;
-            height: 80px;
-            fill: var(--neon-green);
-            filter: drop-shadow(0 0 12px var(--neon-green));
-            animation: pulseGlow 3s infinite alternate;
-        }
-
-        @keyframes pulseGlow {
-            0% { filter: drop-shadow(0 0 8px var(--neon-green)); }
-            100% { filter: drop-shadow(0 0 20px var(--neon-green)); }
-        }
-
-        header h1 {
-            font-size: 2rem;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            color: #fff;
-            text-shadow: 0 0 10px var(--neon-green);
-        }
-
-        header p {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin-top: 5px;
-        }
-
-        /* UKŁAD STRONY */
-        main {
-            max-width: 1200px;
-            margin: 40px auto;
-            padding: 0 20px;
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 30px;
-        }
-
-        @media (max-width: 900px) {
-            main { grid-template-columns: 1fr; }
-        }
-
-        /* SEKCJE / KARTY */
-        .panel {
-            background: var(--card-bg);
-            border: 1px solid rgba(0, 255, 102, 0.2);
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            margin-bottom: 30px;
-            position: relative;
-            overflow: hidden;
-        }
-
-        /* Efekt poświaty dymu na panelach */
-        .panel::border-inside {
-            box-shadow: inset 0 0 15px rgba(0, 255, 102, 0.05);
-        }
-
-        h2 {
-            font-size: 1.4rem;
-            margin-bottom: 20px;
-            border-left: 4px solid var(--neon-green);
-            padding-left: 10px;
-            text-shadow: 0 0 5px rgba(0, 255, 102, 0.5);
-        }
-
-        /* FORMULARZE I PRZYCISKI */
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: var(--text-muted);
-            font-size: 0.9rem;
-        }
-
-        input {
-            width: 100%;
-            padding: 12px;
-            background: #161b22;
-            border: 1px solid rgba(0, 255, 102, 0.3);
-            border-radius: 6px;
-            color: #fff;
-            font-size: 1rem;
-            transition: all 0.3s;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
-        }
-
-        btn, button {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #00ff66 0%, #00b347 100%);
-            border: none;
-            border-radius: 6px;
-            color: #000;
-            font-weight: bold;
-            font-size: 1rem;
-            cursor: pointer;
-            text-transform: uppercase;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(0, 255, 102, 0.3);
-        }
-
-        btn:hover, button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px var(--neon-green);
-        }
-
-        /* MODELE VMAX CARDS */
-        .miners-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 20px;
-        }
-
-        .miner-card {
-            background: #161b22;
-            border: 1px solid rgba(0, 210, 255, 0.2);
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            transition: all 0.3s;
-        }
-
-        .miner-card:hover {
-            border-color: var(--neon-blue);
-            box-shadow: 0 0 15px rgba(0, 210, 255, 0.3);
-            transform: scale(1.03);
-        }
-
-        .miner-card h3 {
-            color: var(--neon-blue);
-            margin-bottom: 10px;
-        }
-
-        .hashrate {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: #fff;
-            margin: 10px 0;
-        }
-
-        /* BŁĘKITNY PŁOMIEŃ (ANIMACJA REKTORA KOPANIA) */
-        .mining-core {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 30px;
-            background: #090d13;
-            border-radius: 8px;
-            border: 1px dashed var(--neon-blue);
-            margin-top: 20px;
-            position: relative;
-        }
-
-        .flame-container {
-            position: relative;
-            width: 60px;
-            height: 60px;
-            margin-bottom: 15px;
-        }
-
-        .blue-flame {
-            position: absolute;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 40px;
-            height: 40px;
-            background: var(--neon-blue);
-            border-radius: 50% 0 50% 50%;
-            transform: rotate(-45deg) translateX(-0%);
-            animation: burn 1.2s infinite ease-in-out alternate;
-            box-shadow: 
-                0 0 20px var(--neon-blue),
-                0 0 40px rgba(0, 210, 255, 0.6),
-                inset 0 0 10px #fff;
-            filter: blur(1px);
-        }
-
-        @keyframes burn {
-            0% { transform: rotate(-45deg) scale(0.9) skew(2deg, 2deg); }
-            100% { transform: rotate(-45deg) scale(1.15) skew(-2deg, -2deg); }
-        }
-
-        /* LOGI TERMINALA */
-        .terminal-log {
-            background: #05070a;
-            border: 1px solid #222;
-            font-family: 'Courier New', Courier, monospace;
-            padding: 15px;
-            border-radius: 6px;
-            max-height: 200px;
-            overflow-y: auto;
-            color: #00ff66;
-            font-size: 0.85rem;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            background: rgba(0, 255, 102, 0.1);
-            color: var(--neon-green);
-            border: 1px solid var(--neon-green);
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BitBudCoin — sieć BbC</title>
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css">
 </head>
 <body>
 
-    <header>
-        <div class="logo-container">
-            <svg class="cannabis-icon" viewBox="0 0 24 24">
-                <path d="M12,2C12,2 11.5,6.5 9,8.5C6.5,6.5 6,2 6,2C6,2 6.5,6.5 4.5,8C2.5,6.5 2,4 2,4C2,4 2.5,7.5 5,9.5C2,10.5 1,13 1,13C1,13 3.5,12 5.5,10.5C4,12.5 4,15.5 4,15.5C4,15.5 5.5,13 7,11.5C6.5,14 7,17 7,17C7,17 8.5,14 9.5,12C10.5,14 11,19 11,19C11,19 11.5,15 12,12.5C12.5,15 13,19 13,19C13,19 13.5,14 14.5,12C15.5,14 17,17 17,17C17,17 17.5,14 17,11.5C18.5,13 20,15.5 20,15.5C20,15.5 20,12.5 18.5,10.5C20.5,12 23,13 23,13C23,13 22,10.5 19,9.5C21.5,7.5 22,4 22,4C22,4 21.5,6.5 19.5,8C17.5,6.5 18,2 18,2C18,2 17.5,6.5 15,8.5C12.5,6.5 12,2 12,2Z"/>
-            </svg>
+<nav class="nav">
+    <a href="index.html" class="brand"><img src="assets/logo.svg" alt="BitBudCoin"> BitBudCoin</a>
+    <div class="nav-links">
+        <a href="index.html" id="nav-index">Start</a>
+        <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+        <a href="explorer.html" id="nav-explorer">Explorer</a>
+        <a href="miner.html" id="nav-miner">Miner</a>
+        <a href="network.html" id="nav-network">Sieć</a>
+        <a href="peers.html" id="nav-peers">Peery</a>
+        <a href="exchange.html" id="nav-exchange">Giełda</a>
+        <a href="address.html" id="nav-address">Adres</a>
+        <a href="docks.html" id="nav-docks">Docs</a>
+    </div>
+    <div class="nav-status">
+        <span class="flame-pill" id="nav-status"><span class="flame-dot"></span><span id="nav-status-text">łączę…</span></span>
+    </div>
+</nav>
+
+<div class="page">
+    <section class="hero">
+        <div class="kicker">proof-of-work · sieć BbC</div>
+        <div class="big-number" id="hero-height">—</div>
+        <div class="sub">bloków wykopanych od genesis</div>
+        <div style="margin-top:28px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+            <a class="btn" href="miner.html">Zacznij kopać</a>
+            <a class="btn secondary" href="explorer.html">Zobacz explorer</a>
         </div>
-        <h1>BBC Blockchain Network</h1>
-        <p>Wypasione węzły vMax & Real-Time Mining System</p>
-    </header>
+    </section>
 
-    <main>
-        <div class="left-column">
-            
-            <div class="panel">
-                <h2>Dostępne Maszyny vMax</h2>
-                <div class="miners-grid" id="miners-list">
-                    <div class="miner-card">
-                        <h3>Ładowanie vMax...</h3>
-                    </div>
-                </div>
-            </div>
-
-            <div class="panel">
-                <h2>Panel Górniczy (Mine Block)</h2>
-                <div class="form-group">
-                    <label for="miner-address">Adres Portfela Górnika</label>
-                    <input type="text" id="miner-address" placeholder="Wprowadź swój adres BBC...">
-                </div>
-                <button onclick="startMining()">Uruchom Proces Kopania</button>
-
-                <div class="mining-core">
-                    <div class="flame-container">
-                        <div class="blue-flame"></div>
-                    </div>
-                    <div id="mining-status" style="text-align: center; font-size: 0.9rem; color: var(--neon-blue);">
-                        Rdzeń gotowy do generowania bloków.
-                    </div>
-                </div>
-            </div>
-
+    <div class="grid cols-3" style="margin-top:12px;">
+        <div class="card">
+            <div class="card-label">Podaż w obiegu</div>
+            <div class="card-value leaf" id="stat-supply">—</div>
         </div>
-
-        <div class="right-column">
-            
-            <div class="panel">
-                <h2>Sprawdź Saldo</h2>
-                <div class="form-group">
-                    <input type="text" id="balance-address" placeholder="Adres portfela...">
-                </div>
-                <button style="background: linear-gradient(135deg, #00d2ff 0%, #0066ff 100%); color: white;" onclick="checkBalance()">Pobierz Balans</button>
-                <div id="balance-result" style="margin-top: 15px; font-size: 1.2rem; font-weight: bold; text-align: center;"></div>
-            </div>
-
-            <div class="panel">
-                <h2>Sieć P2P Węzłów</h2>
-                <div style="margin-bottom: 15px;">
-                    Status połączeń: <span class="status-badge" id="peer-count">0 aktywnych</span>
-                </div>
-                <div class="form-group">
-                    <input type="text" id="peer-address" placeholder="host:port (np. localhost:6001)">
-                </div>
-                <button onclick="connectPeer()">Podłącz Nowy Węzeł</button>
-            </div>
-
-            <div class="panel">
-                <h2>Konsola Systemowa</h2>
-                <div class="terminal-log" id="log-screen">
-                    [SYSTEM] Panel kontrolny zainicjalizowany poprawnie...
-                </div>
-            </div>
-
+        <div class="card">
+            <div class="card-label">Aktualna nagroda</div>
+            <div class="card-value flame" id="stat-reward">—</div>
         </div>
-    </main>
+        <div class="card">
+            <div class="card-label">Trudność</div>
+            <div class="card-value" id="stat-difficulty">—</div>
+        </div>
+    </div>
 
-    <script>
-        // ADRES TWOJEGO BACKENDU (server.js)
-        const API_BASE = 'http://localhost:3000';
+    <div class="card" style="margin-top:32px;">
+        <h2>Czym jest BitBudCoin?</h2>
+        <p>
+            BbC to niezależna sieć blockchain z klasycznym proof-of-work (SHA-256), premine'em
+            założycielskim, halvingiem nagrody co 210 000 bloków i twardym pułapem podaży.
+            Kopać można solo albo w puli — u siebie liczysz hashe, a sieć weryfikuje i zapisuje
+            wynik. Cały ruch (przelewy, blokowanie, salda) idzie przez podpisy Ed25519,
+            więc nikt poza właścicielem klucza prywatnego nie rusza jego środków.
+        </p>
+    </div>
 
-        // Funkcja logująca do wirtualnego terminala na stronie
-        function logToTerminal(message) {
-            const logScreen = document.getElementById('log-screen');
-            const time = new Date().toLocaleTimeString();
-            logScreen.innerHTML += `<br>[${time}] ${message}`;
-            logScreen.scrollTop = logScreen.scrollHeight;
-        }
+    <div class="grid cols-3" style="margin-top:20px;">
+        <div class="card">
+            <h3>Kopanie</h3>
+            <p>Solo albo w puli, z realnym udziałem w nagrodzie proporcjonalnym do zgłoszonych shares.</p>
+            <a href="miner.html">Zobacz jak →</a>
+        </div>
+        <div class="card">
+            <h3>Explorer</h3>
+            <p>Każdy blok, każda transakcja, jawnie i do sprawdzenia w dowolnej chwili.</p>
+            <a href="explorer.html">Przeglądaj →</a>
+        </div>
+        <div class="card">
+            <h3>Portfel</h3>
+            <p>Sprawdź saldo dowolnego adresu i historię jego transakcji.</p>
+            <a href="address.html">Sprawdź adres →</a>
+        </div>
+    </div>
+</div>
 
-        // 1. Pobieranie modeli vMax z backendu
-        async function loadMiners() {
-            try {
-                const res = await fetch(`${API_BASE}/miners/models`);
-                const models = await res.json();
-                const container = document.getElementById('miners-list');
-                container.innerHTML = '';
+<footer>BitBudCoin (BbC) · sieć proof-of-work · <a href="docks.html">dokumentacja</a></footer>
 
-                models.forEach(model => {
-                    container.innerHTML += `
-                        <div class="miner-card">
-                            <h3>${model.name}</h3>
-                            <p style="color: var(--text-muted); font-size: 0.8rem;">ID: ${model.id}</p>
-                            <div class="hashrate">${model.hashRate} TH/s</div>
-                            <span class="status-badge" style="border-color: var(--neon-blue); color: var(--neon-blue);">READY</span>
-                        </div>
-                    `;
-                });
-                logToTerminal('Pomyślnie załadowano specyfikacje urządzeń vMax.');
-            } catch (err) {
-                logToTerminal('Błąd ładowania modeli vMax. Upewnij się, że server.js działa.');
-            }
-        }
+<script src="assets/api.js"></script>
+<script src="assets/nav.js"></script>
+<script>
+setActiveNav("nav-index");
 
-        // 2. Rozpoczęcie kopania bloków
-        async function startMining() {
-            const address = document.getElementById('miner-address').value;
-            const statusDiv = document.getElementById('mining-status');
-            
-            if (!address) {
-                alert('Musisz podać adres portfela!');
-                return;
-            }
-
-            statusDiv.innerHTML = "Generowanie dowodu pracy (PoW)... Trwa kopanie...";
-            logToTerminal(`Inicjalizacja kopania dla adresu: ${address}`);
-
-            try {
-                const res = await fetch(`${API_BASE}/mine/start`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ minerAddress: address })
-                });
-                const data = await res.json();
-
-                if (res.ok) {
-                    statusDiv.innerHTML = `<span style="color: var(--neon-green)">ZAKONCZONE SUKCESEM!</span>`;
-                    logToTerminal(`Wykopano blok #${data.blockHeight}! Hash: ${data.hash.substring(0,15)}... Nagroda: ${data.reward} BBC`);
-                } else {
-                    statusDiv.innerHTML = `<span style="color: red">Błąd: ${data.error}</span>`;
-                    logToTerminal(`Błąd serwera: ${data.error}`);
-                }
-            } catch (err) {
-                statusDiv.innerHTML = "Rdzeń rozłączony.";
-                logToTerminal(`Błąd komunikacji z backendem: ${err.message}`);
-            }
-        }
-
-        // 3. Sprawdzanie salda portfela
-        async function checkBalance() {
-            const address = document.getElementById('balance-address').value;
-            if (!address) return;
-
-            try {
-                const res = await fetch(`${API_BASE}/balance/${address}`);
-                const data = await res.json();
-                document.getElementById('balance-result').innerHTML = `Saldo: <span style="color: var(--neon-green)">${data.balance} BBC</span>`;
-                logToTerminal(`Zaktualizowano stan konta dla: ${address}`);
-            } catch (err) {
-                logToTerminal('Nie udało się pobrać salda.');
-            }
-        }
-
-        // 4. Podłączenie do nowego peera P2P
-        async function connectPeer() {
-            const peerAddress = document.getElementById('peer-address').value;
-            if (!peerAddress) return;
-
-            try {
-                const res = await fetch(`${API_BASE}/peers/connect`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ address: peerAddress })
-                });
-                const data = await res.json();
-                logToTerminal(`Wysłano żądanie połączenia P2P do: ${peerAddress}`);
-                updatePeersCount();
-            } catch (err) {
-                logToTerminal('Błąd podczas próby łączenia z peerem.');
-            }
-        }
-
-        // 5. Pobieranie statusu sieci P2P (liczba połączeń)
-        async function updatePeersCount() {
-            try {
-                const res = await fetch(`${API_BASE}/peers`);
-                const data = await res.json();
-                // Zakładamy strukturę zwracaną przez p2p.getStatus() – dostosuj jeśli zwraca tablicę
-                const count = Array.isArray(data) ? data.length : (data.connectedPeers || 0);
-                document.getElementById('peer-count').innerText = `${count} aktywnych`;
-            } catch (e) {
-                // cichy fail przy braku sieci
-            }
-        }
-
-        // Odpalenie skryptów przy starcie strony
-        window.onload = () => {
-            loadMiners();
-            updatePeersCount();
-            setInterval(updatePeersCount, 10000); // Odświeżanie sieci co 10 sekund
-        };
-    </script>
+async function load() {
+    try {
+        const info = await apiGet("/info");
+        document.getElementById("hero-height").textContent = fmtNumber(info.height, 0);
+        document.getElementById("stat-supply").textContent = fmtNumber(info.circulatingSupply) + " " + info.symbol;
+        document.getElementById("stat-reward").textContent = fmtNumber(info.currentBlockReward) + " " + info.symbol;
+        document.getElementById("stat-difficulty").textContent = fmtNumber(info.difficulty, 0);
+    } catch (e) {
+        document.getElementById("hero-height").textContent = "—";
+    }
+}
+load();
+</script>
 </body>
 </html>
