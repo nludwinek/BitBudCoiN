@@ -2,77 +2,124 @@
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
-<title>BBC Dashboard • Node vMax</title>
-
-<style>
-    body { margin:0; background:#0a0a0a; color:#e5e5e5; font-family:Consolas, monospace; }
-    header { background:#111; padding:20px; border-bottom:2px solid #222; display:flex; justify-content:space-between; align-items:center; }
-    .logo { font-size:24px; color:#00ffaa; font-weight:bold; }
-    a { color:#888; text-decoration:none; }
-    main { max-width:1000px; margin:30px auto; padding:20px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:20px; }
-    .card { background:#111; border:1px solid #222; border-radius:10px; padding:20px; }
-    .card h3 { margin-top:0; color:#00ffaa; }
-    .value { font-size:26px; font-weight:bold; margin:10px 0; }
-    button { padding:10px 18px; background:#00ffaa; color:#000; border:none; font-weight:bold; cursor:pointer; border-radius:6px; }
-    button:hover { background:#00dd99; }
-    pre { background:#0f0f0f; padding:10px; border-radius:6px; overflow-x:auto; font-size:12px; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — BitBudCoin</title>
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/theme.css">
 </head>
-
 <body>
 
-<header>
-    <div class="logo">BBC NODE DASHBOARD</div>
-    <div>
-        <a href="index.html">← Home</a>
+<nav class="nav">
+    <a href="index.html" class="brand"><img src="assets/logo.svg" alt="BitBudCoin"> BitBudCoin</a>
+    <div class="nav-links">
+        <a href="index.html" id="nav-index">Start</a>
+        <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+        <a href="explorer.html" id="nav-explorer">Explorer</a>
+        <a href="miner.html" id="nav-miner">Miner</a>
+        <a href="network.html" id="nav-network">Sieć</a>
+        <a href="peers.html" id="nav-peers">Peery</a>
+        <a href="exchange.html" id="nav-exchange">Giełda</a>
+        <a href="address.html" id="nav-address">Adres</a>
+        <a href="docks.html" id="nav-docks">Docs</a>
     </div>
-</header>
-
-<main>
-
-<div class="grid">
-
-    <div class="card">
-        <h3>Node Info</h3>
-        <div class="value" id="networkName">...</div>
-        <div>Symbol: <span id="symbol">...</span></div>
-        <div>Chain ID: <span id="chainId">...</span></div>
-        <div>Version: <span id="version">...</span></div>
+    <div class="nav-status">
+        <span class="flame-pill" id="nav-status"><span class="flame-dot"></span><span id="nav-status-text">łączę…</span></span>
     </div>
+</nav>
 
-    <div class="card">
-        <h3>Blockchain</h3>
-        <div>Height: <span class="value" id="height">0</span></div>
-        <div>Latest Hash:</div>
-        <div id="latestHash" style="font-size:12px;color:#999;">...</div>
-        <button onclick="refreshChain()">Odśwież</button>
-    </div>
+<div class="page">
+    <h1 style="margin-top:32px;">Dashboard sieci</h1>
+    <div id="error-box"></div>
 
-    <div class="card">
-        <h3>Mempool</h3>
-        <div class="value" id="mempoolCount">0</div>
-        <button onclick="refreshMempool()">Odśwież</button>
-        <pre id="mempoolPreview">Brak danych</pre>
+    <div class="grid cols-3">
+        <div class="card"><div class="card-label">Wysokość</div><div class="card-value leaf skeleton" id="s-height">— — —</div></div>
+        <div class="card"><div class="card-label">Trudność</div><div class="card-value skeleton" id="s-difficulty">— — —</div></div>
+        <div class="card"><div class="card-label">Podaż / pułap</div><div class="card-value skeleton" id="s-supply">— — —</div></div>
+        <div class="card"><div class="card-label">Nagroda za blok</div><div class="card-value flame skeleton" id="s-reward">— — —</div></div>
+        <div class="card"><div class="card-label">Do następnego halvingu</div><div class="card-value skeleton" id="s-halving">— — —</div></div>
+        <div class="card"><div class="card-label">Do przeliczenia trudności</div><div class="card-value skeleton" id="s-retarget">— — —</div></div>
     </div>
 
-    <div class="card">
-        <h3>Akcje</h3>
-        <button onclick="mineBlock()">⛏ Wykop blok</button>
-        <div id="actionStatus" style="margin-top:10px;font-size:13px;color:#00ffaa;">Gotowy</div>
+    <div class="grid cols-2" style="margin-top:20px;">
+        <div class="card">
+            <h3>Ostatnie bloki</h3>
+            <table id="recent-blocks-table">
+                <thead><tr><th>#</th><th>Kiedy</th><th>Hash</th></tr></thead>
+                <tbody><tr><td colspan="3" class="skeleton">ładowanie ładowanie ładowanie</td></tr></tbody>
+            </table>
+            <div style="margin-top:12px;"><a href="explorer.html">Pełny explorer →</a></div>
+        </div>
+        <div class="card">
+            <h3>Pula kopania</h3>
+            <div id="pool-summary">
+                <p class="skeleton">ładowanie ładowanie ładowanie ładowanie</p>
+            </div>
+            <div style="margin-top:8px;"><a href="miner.html">Dołącz do kopania →</a></div>
+        </div>
     </div>
-
 </div>
 
-</main>
+<footer>BitBudCoin (BbC) · sieć proof-of-work · <a href="docks.html">dokumentacja</a></footer>
 
+<script src="assets/api.js"></script>
+<script src="assets/nav.js"></script>
 <script>
-const API = "http://localhost:5000";
+setActiveNav("nav-dashboard");
 
-async function loadInfo() {
+function unskeleton(id, html) {
+    const el = document.getElementById(id);
+    el.classList.remove("skeleton");
+    el.innerHTML = html;
+}
+
+async function load() {
     try {
-        const res = await fetch(`${API}/info`);
-        const data = await res.json();
+        const info = await apiGet("/info");
+        unskeleton("s-height", "#" + fmtNumber(info.height, 0));
+        unskeleton("s-difficulty", fmtNumber(info.difficulty, 0));
+        unskeleton("s-supply", fmtNumber(info.circulatingSupply, 0) + " / " + fmtNumber(info.maxSupply, 0));
+        unskeleton("s-reward", fmtNumber(info.currentBlockReward) + " " + info.symbol);
+        unskeleton("s-halving", fmtNumber(info.blocksUntilHalving, 0) + " bloków");
+        unskeleton("s-retarget", fmtNumber(info.blocksUntilRetarget, 0) + " bloków");
 
-        document.getElementById("networkName").textContent = data.network;
-        document.getElementById("symbol").textContent = data.symbol;
+        if (!info.isValid) {
+            document.getElementById("error-box").innerHTML = '<div class="error-banner">⚠ Węzeł zgłasza niepoprawny łańcuch lokalny — sprawdź logi serwera.</div>';
+        }
+    } catch (e) {
+        document.getElementById("error-box").innerHTML = `<div class="error-banner">Nie można połączyć się z backendem: ${escapeHtml(e.message)}</div>`;
+    }
+
+    try {
+        const blocks = await apiGet("/blocks?limit=5");
+        const tbody = document.querySelector("#recent-blocks-table tbody");
+        if (blocks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-dim)">Brak bloków poza genesis</td></tr>';
+        } else {
+            tbody.innerHTML = blocks.map(b => `
+                <tr onclick="location.href='block.html?height=${b.height}'" style="cursor:pointer">
+                    <td>${b.height}</td>
+                    <td>${timeAgo(b.timestamp)}</td>
+                    <td class="truncate">${fmtHash(b.hash)}</td>
+                </tr>`).join("");
+        }
+    } catch (e) {
+        document.querySelector("#recent-blocks-table tbody").innerHTML = `<tr><td colspan="3">błąd: ${escapeHtml(e.message)}</td></tr>`;
+    }
+
+    try {
+        const pool = await apiGet("/pool/status");
+        document.getElementById("pool-summary").innerHTML = `
+            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Trudność share</span><span class="mono">${fmtNumber(pool.shareDifficulty, 0)}</span></div>
+            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Shares w tej rundzie</span><span class="mono">${fmtNumber(pool.totalSharesThisRound, 0)}</span></div>
+            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Opłata puli</span><span class="mono">${(pool.poolFee * 100).toFixed(0)}%</span></div>`;
+    } catch (e) {
+        document.getElementById("pool-summary").innerHTML = `<p style="color:var(--danger)">Pula niedostępna</p>`;
+    }
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
