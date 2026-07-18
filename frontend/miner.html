@@ -114,6 +114,7 @@ async function benchmarkDevice(durationMs) {
         const data = new TextEncoder().encode("benchmark" + count);
         await crypto.subtle.digest("SHA-256", data);
         count++;
+        if (count % 500 === 0) await new Promise((r) => setTimeout(r, 0));
     }
     return Math.round(count / ((performance.now() - start) / 1000));
 }
@@ -125,7 +126,13 @@ function formatDuration(seconds) {
 document.getElementById("benchBtn").addEventListener("click", async () => {
     const btn = document.getElementById("benchBtn");
     const resultEl = document.getElementById("benchResult");
+    if (BrowserMiner.isMining() || SoloMiner.isMining()) {
+        resultEl.textContent = t("miner_bench_busy");
+        return;
+    }
     btn.disabled = true;
+    document.getElementById("autoMineToggle").disabled = true;
+    document.getElementById("soloAutoToggle").disabled = true;
     resultEl.textContent = t("miner_bench_running");
     const rate = await benchmarkDevice(1500);
     const info = await apiGet("/info");
@@ -133,6 +140,8 @@ document.getElementById("benchBtn").addEventListener("click", async () => {
     resultEl.innerHTML = `<span style="color:var(--leaf);font-size:1.4rem;">${fmtNumber(rate)}</span> H/s<br>
         <span style="color:var(--text-dim);font-size:.85rem;">${t("miner_bench_estimate")} ${formatDuration(avgSeconds)}</span>`;
     btn.disabled = false;
+    document.getElementById("autoMineToggle").disabled = false;
+    document.getElementById("soloAutoToggle").disabled = false;
     btn.textContent = t("miner_bench_btn");
 });
 
@@ -144,6 +153,7 @@ document.getElementById("autoMineToggle").addEventListener("click", () => {
         btn.textContent = t("miner_start_btn");
         btn.classList.remove("flame");
         document.getElementById("soloAutoToggle").disabled = false;
+        document.getElementById("benchBtn").disabled = false;
     } else {
         const addr = document.getElementById("autoMinerAddress").value.trim();
         if (!addr) { alert("Podaj adres BbC"); return; }
@@ -163,6 +173,7 @@ document.getElementById("autoMineToggle").addEventListener("click", () => {
         btn.textContent = t("miner_stop_btn");
         btn.classList.add("flame");
         document.getElementById("soloAutoToggle").disabled = true;
+        document.getElementById("benchBtn").disabled = true;
     }
 });
 
@@ -173,6 +184,7 @@ document.getElementById("soloAutoToggle").addEventListener("click", () => {
         SoloMiner.stop();
         btn.textContent = t("miner_solo_start");
         document.getElementById("autoMineToggle").disabled = false;
+        document.getElementById("benchBtn").disabled = false;
     } else {
         const addr = document.getElementById("soloAutoAddress").value.trim();
         if (!addr) { alert("Podaj adres BbC"); return; }
@@ -188,6 +200,7 @@ document.getElementById("soloAutoToggle").addEventListener("click", () => {
         });
         btn.textContent = t("miner_stop_btn");
         document.getElementById("autoMineToggle").disabled = true;
+        document.getElementById("benchBtn").disabled = true;
     }
 });
 </script>
