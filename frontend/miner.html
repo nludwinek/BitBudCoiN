@@ -24,44 +24,44 @@
     <a href="dashboard.html">Dashboard</a>
     <a href="explorer.html">Explorer</a>
     <a href="miner.html" class="active">Kopanie</a>
-    <a href="network.html">Sieć</a>
-    <a href="peers.html">Peery</a>
-    <a href="wallet.html">Portfel</a>
-    <a href="docks.html">Docs</a>
+    <a href="network.html" data-i18n="nav_network">Sieć</a>
+    <a href="peers.html" data-i18n="nav_peers">Peery</a>
+    <a href="wallet.html" data-i18n="nav_wallet">Portfel</a>
+    <a href="docks.html" data-i18n="nav_docs">Docs</a>
   </div>
   <div class="nav-status"><span class="flame-pill" id="navStatus"><span class="flame-dot"></span>łączenie…</span></div>
 </nav>
 
 <div class="page">
-  <h1 style="margin-top:32px;">Kopanie</h1>
+  <h1 style="margin-top:32px;" data-i18n="miner_h1">Kopanie</h1>
 
   <div class="card">
-    <h3>Status puli</h3>
+    <h3 data-i18n="miner_pool_status">Status puli</h3>
     <div id="poolStatus" class="skeleton" style="height:60px;"></div>
   </div>
 
   <div class="card">
-    <h3>Kopanie automatyczne (w tej przeglądarce)</h3>
-    <p>Liczy hashe tutaj, na Twoim urządzeniu, i samo zgłasza znalezione shares — bez klikania czegokolwiek co chwilę.</p>
+    <h3 data-i18n="miner_auto_title">Kopanie automatyczne (w tej przeglądarce)</h3>
+    <p data-i18n="miner_auto_desc">Liczy hashe tutaj, na Twoim urządzeniu, i samo zgłasza znalezione shares — bez klikania czegokolwiek co chwilę.</p>
     <div class="field">
-      <label>Twój adres BbC</label>
+      <label data-i18n="miner_your_address">Twój adres BbC</label>
       <input id="autoMinerAddress" placeholder="BbC...">
     </div>
-    <button class="btn" id="autoMineToggle">Zacznij kopać</button>
-    <p class="hint" style="margin-top:10px;color:var(--text-dim);font-size:.8rem;">Kopie dopóki ta karta jest otwarta na ekranie — zamknięcie karty albo zgaszenie ekranu telefonu może to zatrzymać.</p>
+    <button class="btn" id="autoMineToggle" data-i18n="miner_start_btn">Zacznij kopać</button>
+    <p class="hint" style="margin-top:10px;color:var(--text-dim);font-size:.8rem;" data-i18n="miner_auto_hint">Kopie dopóki ta karta jest otwarta na ekranie — zamknięcie karty albo zgaszenie ekranu telefonu może to zatrzymać.</p>
 
     <div class="mine-stats">
       <div><span class="n" id="autoStatShares">0</span><span class="l">Shares</span></div>
-      <div><span class="n" id="autoStatBlocks">0</span><span class="l">Bloki</span></div>
+      <div><span class="n" id="autoStatBlocks">0</span><span class="l" data-i18n="miner_blocks_label">Bloki</span></div>
     </div>
     <div id="autoMineLog"></div>
   </div>
 
   <div class="card">
-    <h3>Solo — szybki test</h3>
+    <h3 data-i18n="miner_solo_title">Solo — szybki test</h3>
     <p>Kopie synchronicznie na serwerze, jeden blok na żądanie. Dobre do testów, nie do stałego kopania — do tego patrz sekcja wyżej albo <code>miner-client.js</code> w repo backendu.</p>
     <div class="field">
-      <label>Twój adres</label>
+      <label data-i18n="miner_your_address">Twój adres</label>
       <input id="soloAddress" placeholder="BbC...">
     </div>
     <button class="btn secondary" id="soloMineBtn">Wykop jeden blok</button>
@@ -69,7 +69,7 @@
   </div>
 
   <div class="card">
-    <h3>Modele sprzętu (referencyjne)</h3>
+    <h3 data-i18n="miner_models_title">Modele sprzętu (referencyjne)</h3>
     <table>
       <thead><tr><th>Model</th><th>Hashrate</th></tr></thead>
       <tbody id="minersTableBody"><tr><td colspan="2" class="skeleton">ładowanie…</td></tr></tbody>
@@ -82,6 +82,7 @@
 <script src="assets/api.js"></script>
 <script src="assets/nav.js"></script>
 <script src="assets/browser-miner.js"></script>
+<script src="assets/i18n.js"></script>
 <script>
 mountSmokeField();
 mountNavStatus();
@@ -158,36 +159,6 @@ document.getElementById("soloMineBtn").addEventListener("click", async () => {
         resultEl.textContent = `❌ ${e.message}`;
     } finally {
         btn.disabled = false;
-    }
-});
-</script>
-<script src="assets/solo-miner.js"></script>
-<div class="card" style="border-color:var(--flame);">
-  <h3>⚡ Solo — cała nagroda dla Ciebie</h3>
-  <p>Liczy w tej przeglądarce, tak jak kopanie przez pulę — ale bez dzielenia się. Znajdziesz blok, cała nagroda (50 BbC) trafia prosto na Twój adres.</p>
-  <div class="field"><label>Twój adres BbC</label><input id="soloAutoAddress" placeholder="BbC..."></div>
-  <button class="btn flame" id="soloAutoToggle">Zacznij kopać solo</button>
-  <div style="margin-top:14px;font-family:var(--font-mono);font-size:.85rem;">Bloki: <span id="soloAutoBlocks">0</span></div>
-  <div id="soloAutoLog" style="max-height:160px;overflow-y:auto;font-family:var(--font-mono);font-size:.78rem;color:var(--text-dim);margin-top:10px;"></div>
-</div>
-<script>
-document.getElementById("soloAutoToggle").addEventListener("click", () => {
-    const btn = document.getElementById("soloAutoToggle");
-    if (SoloMiner.isMining()) {
-        SoloMiner.stop();
-        btn.textContent = "Zacznij kopać solo";
-    } else {
-        const addr = document.getElementById("soloAutoAddress").value.trim();
-        if (!addr) return alert("Podaj adres BbC");
-        SoloMiner.start(addr, API_BASE, {
-            onUpdate: (s) => { document.getElementById("soloAutoBlocks").textContent = s.blocksFound; },
-            onLog: (msg) => {
-                const line = document.createElement("div");
-                line.textContent = msg;
-                document.getElementById("soloAutoLog").prepend(line);
-            }
-        });
-        btn.textContent = "Zatrzymaj";
     }
 });
 </script>
