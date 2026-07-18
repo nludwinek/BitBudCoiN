@@ -32,7 +32,7 @@ function mountResponsiveNav() {
                 .nav-links.open { display:flex; }
                 .nav-links a { padding:12px 10px; border-bottom:1px solid var(--border); }
                 .nav-links a:last-child { border-bottom:none; }
-                .nav { position:relative; flex-wrap:wrap; }
+                .nav { flex-wrap:wrap; }
                 .lang-switcher { order:2; margin-left:auto !important; }
             }
         `;
