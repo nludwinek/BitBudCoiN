@@ -28,6 +28,7 @@ const SoloMiner = (() => {
             candidate.nonce++;
             sessionStats.attempts++;
             if (candidate.nonce % 300 === 0) onUpdate(sessionStats);
+            if (candidate.nonce % 500 === 0) await new Promise((r) => setTimeout(r, 0));
             hash = await computeBlockHash(candidate);
         }
         candidate.hash = hash;
