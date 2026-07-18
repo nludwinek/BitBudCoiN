@@ -1,115 +1,165 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Miner — BitBudCoin</title>
-<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kopanie — BitBudCoin</title>
+<link rel="icon" href="assets/logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/theme.css">
+<style>
+  #autoMineLog { max-height:180px; overflow-y:auto; font-family:var(--font-mono); font-size:.78rem; color:var(--text-dim); margin-top:12px; border-top:1px solid var(--border); padding-top:10px; }
+  #autoMineLog div { padding:3px 0; }
+  .mine-stats { display:flex; gap:24px; font-family:var(--font-mono); font-size:.95rem; margin-top:14px; }
+  .mine-stats .n { color:var(--leaf); font-size:1.3rem; display:block; }
+  .mine-stats .l { color:var(--text-dim); font-size:.72rem; text-transform:uppercase; }
+</style>
 </head>
 <body>
 
 <nav class="nav">
-    <a href="index.html" class="brand"><img src="assets/logo.svg" alt="BitBudCoin"> BitBudCoin</a>
-    <div class="nav-links">
-        <a href="index.html" id="nav-index">Start</a>
-        <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
-        <a href="explorer.html" id="nav-explorer">Explorer</a>
-        <a href="miner.html" id="nav-miner">Miner</a>
-        <a href="network.html" id="nav-network">Sieć</a>
-        <a href="peers.html" id="nav-peers">Peery</a>
-        <a href="exchange.html" id="nav-exchange">Giełda</a>
-        <a href="address.html" id="nav-address">Adres</a>
-        <a href="docks.html" id="nav-docks">Docs</a>
-    </div>
-    <div class="nav-status">
-        <span class="flame-pill" id="nav-status"><span class="flame-dot"></span><span id="nav-status-text">łączę…</span></span>
-    </div>
+  <a class="brand" href="index.html"><img src="assets/logo.svg" alt="" style="width:30px;height:33px;vertical-align:middle;margin-right:8px;"> BitBudCoin</a>
+  <div class="nav-links">
+    <a href="dashboard.html">Dashboard</a>
+    <a href="explorer.html">Explorer</a>
+    <a href="miner.html" class="active">Kopanie</a>
+    <a href="network.html">Sieć</a>
+    <a href="peers.html">Peery</a>
+    <a href="wallet.html">Portfel</a>
+    <a href="docks.html">Docs</a>
+  </div>
+  <div class="nav-status"><span class="flame-pill" id="navStatus"><span class="flame-dot"></span>łączenie…</span></div>
 </nav>
 
 <div class="page">
-    <h1 style="margin-top:32px;">Kopanie</h1>
+  <h1 style="margin-top:32px;">Kopanie</h1>
 
-    <div class="grid cols-2">
-        <div class="card">
-            <h3>Status puli</h3>
-            <div id="pool-box"><p class="skeleton">ładowanie ładowanie ładowanie</p></div>
-        </div>
-        <div class="card">
-            <h3>Solo — szybki test</h3>
-            <p>Kopie synchronicznie na serwerze. Dobre do testów, nie do stałego kopania — patrz <a href="docks.html">docs</a>.</p>
-            <div class="field">
-                <label for="miner-address">Twój adres</label>
-                <input id="miner-address" placeholder="BbC...">
-            </div>
-            <button class="btn flame" id="mine-btn">Wykop jeden blok</button>
-            <div id="mine-result" style="margin-top:12px;"></div>
-        </div>
-    </div>
+  <div class="card">
+    <h3>Status puli</h3>
+    <div id="poolStatus" class="skeleton" style="height:60px;"></div>
+  </div>
 
-    <div class="card" style="margin-top:20px;">
-        <h3>Modele sprzętu (referencyjne)</h3>
-        <table id="models-table">
-            <thead><tr><th>Model</th><th>Hashrate</th></tr></thead>
-            <tbody><tr><td colspan="2" class="skeleton">ładowanie ładowanie</td></tr></tbody>
-        </table>
+  <div class="card">
+    <h3>Kopanie automatyczne (w tej przeglądarce)</h3>
+    <p>Liczy hashe tutaj, na Twoim urządzeniu, i samo zgłasza znalezione shares — bez klikania czegokolwiek co chwilę.</p>
+    <div class="field">
+      <label>Twój adres BbC</label>
+      <input id="autoMinerAddress" placeholder="BbC...">
     </div>
+    <button class="btn" id="autoMineToggle">Zacznij kopać</button>
+    <p class="hint" style="margin-top:10px;color:var(--text-dim);font-size:.8rem;">Kopie dopóki ta karta jest otwarta na ekranie — zamknięcie karty albo zgaszenie ekranu telefonu może to zatrzymać.</p>
 
-    <div class="card" style="margin-top:20px;">
-        <h3>Kopanie w puli (realne, u siebie)</h3>
-        <p>Pula to jedyny sposób kopania, który nie blokuje serwera — Ty liczysz hashe lokalnie, wysyłasz shares.</p>
-        <pre style="background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:14px; overflow-x:auto; font-family:var(--font-mono); font-size:0.85rem;">node miner-client.js TwójAdresBbC http://twój-serwer:5000</pre>
-        <p>Skrypt referencyjny jest w repozytorium backendu (<code>miner-client.js</code>).</p>
+    <div class="mine-stats">
+      <div><span class="n" id="autoStatShares">0</span><span class="l">Shares</span></div>
+      <div><span class="n" id="autoStatBlocks">0</span><span class="l">Bloki</span></div>
     </div>
+    <div id="autoMineLog"></div>
+  </div>
+
+  <div class="card">
+    <h3>Solo — szybki test</h3>
+    <p>Kopie synchronicznie na serwerze, jeden blok na żądanie. Dobre do testów, nie do stałego kopania — do tego patrz sekcja wyżej albo <code>miner-client.js</code> w repo backendu.</p>
+    <div class="field">
+      <label>Twój adres</label>
+      <input id="soloAddress" placeholder="BbC...">
+    </div>
+    <button class="btn secondary" id="soloMineBtn">Wykop jeden blok</button>
+    <div id="soloResult" style="margin-top:10px;font-family:var(--font-mono);font-size:.85rem;"></div>
+  </div>
+
+  <div class="card">
+    <h3>Modele sprzętu (referencyjne)</h3>
+    <table>
+      <thead><tr><th>Model</th><th>Hashrate</th></tr></thead>
+      <tbody id="minersTableBody"><tr><td colspan="2" class="skeleton">ładowanie…</td></tr></tbody>
+    </table>
+  </div>
 </div>
 
-<footer>BitBudCoin (BbC) · sieć proof-of-work · <a href="docks.html">dokumentacja</a></footer>
+<footer>BitBudCoin (BbC) · <a href="docks.html">dokumentacja</a></footer>
 
 <script src="assets/api.js"></script>
 <script src="assets/nav.js"></script>
+<script src="assets/browser-miner.js"></script>
 <script>
-setActiveNav("nav-miner");
+mountSmokeField();
+mountNavStatus();
+setActiveNav();
 
-async function loadPool() {
+// --- Status puli ---
+(async () => {
     try {
-        const pool = await apiGet("/pool/status");
-        document.getElementById("pool-box").innerHTML = `
-            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Pracuje nad blokiem</span><span class="mono">#${fmtNumber(pool.workingOnHeight, 0)}</span></div>
-            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Trudność share / bloku</span><span class="mono">${fmtNumber(pool.shareDifficulty,0)} / ${fmtNumber(pool.blockDifficulty,0)}</span></div>
-            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Shares w tej rundzie</span><span class="mono">${fmtNumber(pool.totalSharesThisRound, 0)}</span></div>
-            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Opłata puli</span><span class="mono">${(pool.poolFee*100).toFixed(0)}%</span></div>`;
+        const status = await apiGet("/pool/status");
+        document.getElementById("poolStatus").outerHTML = `
+            <div style="font-family:var(--font-mono);font-size:.9rem;line-height:1.8;">
+                Pracuje nad blokiem <strong>#${status.workingOnHeight}</strong><br>
+                Trudność share / bloku: ${fmtNumber(status.shareDifficulty)} / ${fmtNumber(status.blockDifficulty)}<br>
+                Shares w tej rundzie: ${status.totalSharesThisRound}<br>
+                Opłata puli: ${(status.poolFee * 100).toFixed(0)}%
+            </div>`;
     } catch (e) {
-        document.getElementById("pool-box").innerHTML = `<p style="color:var(--danger)">Pula niedostępna: ${escapeHtml(e.message)}</p>`;
+        document.getElementById("poolStatus").outerHTML = `<div class="error-banner">Pula niedostępna: ${e.message}</div>`;
     }
-}
+})();
 
-async function loadModels() {
+// --- Modele sprzętu ---
+(async () => {
     try {
         const models = await apiGet("/miners/models");
-        document.querySelector("#models-table tbody").innerHTML = models.map(m => `<tr><td>${escapeHtml(m.name)}</td><td>${m.hashRate} H/s</td></tr>`).join("");
+        document.getElementById("minersTableBody").innerHTML = models.map((m) =>
+            `<tr><td>${escapeHtml(m.name)}</td><td>${m.hashRate} H/s</td></tr>`
+        ).join("");
     } catch (e) {
-        document.querySelector("#models-table tbody").innerHTML = `<tr><td colspan="2">błąd</td></tr>`;
+        document.getElementById("minersTableBody").innerHTML = `<tr><td colspan="2">Niedostępne</td></tr>`;
     }
-}
+})();
 
-document.getElementById("mine-btn").addEventListener("click", async () => {
-    const addr = document.getElementById("miner-address").value.trim();
-    const box = document.getElementById("mine-result");
-    if (!addr) { box.innerHTML = '<div class="error-banner">Podaj adres</div>'; return; }
-    box.innerHTML = '<p style="color:var(--text-dim)">Kopię…</p>';
-    try {
-        const r = await apiPost("/mine/start", { minerAddress: addr });
-        box.innerHTML = `<div class="card" style="background:var(--surface-2);">⛏️ Wykopano blok <a href="block.html?height=${r.blockHeight}">#${r.blockHeight}</a>, nagroda ${fmtNumber(r.reward)} BbC</div>`;
-        loadPool();
-    } catch (e) {
-        box.innerHTML = `<div class="error-banner">${escapeHtml(e.message)}</div>`;
+// --- Kopanie automatyczne w przeglądarce ---
+document.getElementById("autoMineToggle").addEventListener("click", () => {
+    const btn = document.getElementById("autoMineToggle");
+    if (BrowserMiner.isMining()) {
+        BrowserMiner.stop();
+        btn.textContent = "Zacznij kopać";
+        btn.classList.remove("flame");
+    } else {
+        const addr = document.getElementById("autoMinerAddress").value.trim();
+        if (!addr) { alert("Podaj adres BbC"); return; }
+        BrowserMiner.start(addr, API_BASE, {
+            onUpdate: (s) => {
+                document.getElementById("autoStatShares").textContent = s.shares;
+                document.getElementById("autoStatBlocks").textContent = s.blocksFound;
+            },
+            onLog: (msg) => {
+                const line = document.createElement("div");
+                line.textContent = msg;
+                const log = document.getElementById("autoMineLog");
+                log.prepend(line);
+                while (log.children.length > 30) log.removeChild(log.lastChild);
+            }
+        });
+        btn.textContent = "Zatrzymaj kopanie";
+        btn.classList.add("flame");
     }
 });
 
-loadPool();
-loadModels();
+// --- Solo test ---
+document.getElementById("soloMineBtn").addEventListener("click", async () => {
+    const addr = document.getElementById("soloAddress").value.trim();
+    const resultEl = document.getElementById("soloResult");
+    if (!addr) { alert("Podaj adres BbC"); return; }
+    const btn = document.getElementById("soloMineBtn");
+    btn.disabled = true;
+    resultEl.textContent = "Kopię...";
+    try {
+        const result = await apiPost("/mine/start", { minerAddress: addr });
+        resultEl.textContent = `✅ Blok #${result.blockHeight}, nagroda: ${result.reward} BbC`;
+    } catch (e) {
+        resultEl.textContent = `❌ ${e.message}`;
+    } finally {
+        btn.disabled = false;
+    }
+});
 </script>
 </body>
 </html>
