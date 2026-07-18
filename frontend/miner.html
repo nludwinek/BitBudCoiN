@@ -161,5 +161,35 @@ document.getElementById("soloMineBtn").addEventListener("click", async () => {
     }
 });
 </script>
+<script src="assets/solo-miner.js"></script>
+<div class="card" style="border-color:var(--flame);">
+  <h3>⚡ Solo — cała nagroda dla Ciebie</h3>
+  <p>Liczy w tej przeglądarce, tak jak kopanie przez pulę — ale bez dzielenia się. Znajdziesz blok, cała nagroda (50 BbC) trafia prosto na Twój adres.</p>
+  <div class="field"><label>Twój adres BbC</label><input id="soloAutoAddress" placeholder="BbC..."></div>
+  <button class="btn flame" id="soloAutoToggle">Zacznij kopać solo</button>
+  <div style="margin-top:14px;font-family:var(--font-mono);font-size:.85rem;">Bloki: <span id="soloAutoBlocks">0</span></div>
+  <div id="soloAutoLog" style="max-height:160px;overflow-y:auto;font-family:var(--font-mono);font-size:.78rem;color:var(--text-dim);margin-top:10px;"></div>
+</div>
+<script>
+document.getElementById("soloAutoToggle").addEventListener("click", () => {
+    const btn = document.getElementById("soloAutoToggle");
+    if (SoloMiner.isMining()) {
+        SoloMiner.stop();
+        btn.textContent = "Zacznij kopać solo";
+    } else {
+        const addr = document.getElementById("soloAutoAddress").value.trim();
+        if (!addr) return alert("Podaj adres BbC");
+        SoloMiner.start(addr, API_BASE, {
+            onUpdate: (s) => { document.getElementById("soloAutoBlocks").textContent = s.blocksFound; },
+            onLog: (msg) => {
+                const line = document.createElement("div");
+                line.textContent = msg;
+                document.getElementById("soloAutoLog").prepend(line);
+            }
+        });
+        btn.textContent = "Zatrzymaj";
+    }
+});
+</script>
 </body>
 </html>
