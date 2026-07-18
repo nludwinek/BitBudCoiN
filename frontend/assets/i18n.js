@@ -48,6 +48,7 @@ const translations = {
         miner_bench_title: "Ile realnie liczy Twoje urządzenie?",
         miner_bench_desc: "Prawdziwy pomiar wykonany teraz, na żywo — nie specyfikacja z ulotki.",
         miner_bench_btn: "Sprawdź szybkość", miner_bench_running: "Liczę przez 1,5 sekundy...",
+        miner_bench_busy: "Zatrzymaj najpierw kopanie, żeby pomiar był miarodajny.",
         miner_bench_estimate: "Przy obecnej trudności sieci: średnio", miner_bench_sec: "s",
         miner_bench_min: "min", miner_bench_hr: "godz.",
         miner_footer: "BitBudCoin (BbC) · sieć proof-of-work"
@@ -96,6 +97,7 @@ const translations = {
         miner_bench_title: "How fast is your device, really?",
         miner_bench_desc: "A real measurement taken right now, live — not a spec sheet.",
         miner_bench_btn: "Check speed", miner_bench_running: "Measuring for 1.5 seconds...",
+        miner_bench_busy: "Stop mining first for an accurate reading.",
         miner_bench_estimate: "At the current network difficulty: on average", miner_bench_sec: "s",
         miner_bench_min: "min", miner_bench_hr: "hr",
         miner_footer: "BitBudCoin (BbC) · proof-of-work network"
