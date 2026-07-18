@@ -21,9 +21,9 @@
 <nav class="nav">
   <a class="brand" href="index.html"><img src="assets/logo.svg" alt="" style="width:30px;height:33px;vertical-align:middle;margin-right:8px;"> BitBudCoin</a>
   <div class="nav-links">
-    <a href="dashboard.html">Dashboard</a>
-    <a href="explorer.html">Explorer</a>
-    <a href="miner.html" class="active">Kopanie</a>
+    <a href="dashboard.html" data-i18n="nav_dashboard">Dashboard</a>
+    <a href="explorer.html" data-i18n="nav_explorer">Explorer</a>
+    <a href="miner.html" class="active" data-i18n="nav_mining">Kopanie</a>
     <a href="network.html" data-i18n="nav_network">Sieć</a>
     <a href="peers.html" data-i18n="nav_peers">Peery</a>
     <a href="wallet.html" data-i18n="nav_wallet">Portfel</a>
@@ -57,23 +57,23 @@
     <div id="autoMineLog"></div>
   </div>
 
-  <div class="card">
-    <h3 data-i18n="miner_solo_title">Solo — szybki test</h3>
-    <p>Kopie synchronicznie na serwerze, jeden blok na żądanie. Dobre do testów, nie do stałego kopania — do tego patrz sekcja wyżej albo <code>miner-client.js</code> w repo backendu.</p>
+  <div class="card" style="border-color:var(--flame);">
+    <h3 data-i18n="miner_solo_title">⚡ Solo — cała nagroda dla Ciebie</h3>
+    <p data-i18n="miner_solo_desc">Liczy w tej przeglądarce, tak jak kopanie przez pulę — ale bez dzielenia się. Znajdziesz blok, cała nagroda trafia prosto na Twój adres.</p>
     <div class="field">
-      <label data-i18n="miner_your_address">Twój adres</label>
-      <input id="soloAddress" placeholder="BbC...">
+      <label data-i18n="miner_your_address">Twój adres BbC</label>
+      <input id="soloAutoAddress" placeholder="BbC...">
     </div>
-    <button class="btn secondary" id="soloMineBtn">Wykop jeden blok</button>
-    <div id="soloResult" style="margin-top:10px;font-family:var(--font-mono);font-size:.85rem;"></div>
+    <button class="btn flame" id="soloAutoToggle" data-i18n="miner_solo_start">Zacznij kopać solo</button>
+    <div style="margin-top:14px;font-family:var(--font-mono);font-size:.85rem;"><span data-i18n="miner_blocks_label">Bloki</span>: <span id="soloAutoBlocks">0</span></div>
+    <div id="soloAutoLog" style="max-height:160px;overflow-y:auto;font-family:var(--font-mono);font-size:.78rem;color:var(--text-dim);margin-top:10px;"></div>
   </div>
 
   <div class="card">
-    <h3 data-i18n="miner_models_title">Modele sprzętu (referencyjne)</h3>
-    <table>
-      <thead><tr><th>Model</th><th>Hashrate</th></tr></thead>
-      <tbody id="minersTableBody"><tr><td colspan="2" class="skeleton">ładowanie…</td></tr></tbody>
-    </table>
+    <h3 data-i18n="miner_bench_title">Ile realnie liczy Twoje urządzenie?</h3>
+    <p data-i18n="miner_bench_desc">Prawdziwy pomiar wykonany teraz, na żywo — nie specyfikacja z ulotki.</p>
+    <button class="btn secondary" id="benchBtn" data-i18n="miner_bench_btn">Sprawdź szybkość</button>
+    <div id="benchResult" style="margin-top:14px;font-family:var(--font-mono);"></div>
   </div>
 </div>
 
@@ -82,7 +82,9 @@
 <script src="assets/api.js"></script>
 <script src="assets/nav.js"></script>
 <script src="assets/browser-miner.js"></script>
+<script src="assets/solo-miner.js"></script>
 <script src="assets/i18n.js"></script>
+<script src="assets/nav-responsive.js"></script>
 <script>
 mountSmokeField();
 mountNavStatus();
@@ -104,24 +106,42 @@ setActiveNav();
     }
 })();
 
-// --- Modele sprzętu ---
-(async () => {
-    try {
-        const models = await apiGet("/miners/models");
-        document.getElementById("minersTableBody").innerHTML = models.map((m) =>
-            `<tr><td>${escapeHtml(m.name)}</td><td>${m.hashRate} H/s</td></tr>`
-        ).join("");
-    } catch (e) {
-        document.getElementById("minersTableBody").innerHTML = `<tr><td colspan="2">Niedostępne</td></tr>`;
+// --- Benchmark realnej prędkości urządzenia ---
+async function benchmarkDevice(durationMs) {
+    const start = performance.now();
+    let count = 0;
+    while (performance.now() - start < durationMs) {
+        const data = new TextEncoder().encode("benchmark" + count);
+        await crypto.subtle.digest("SHA-256", data);
+        count++;
     }
-})();
+    return Math.round(count / ((performance.now() - start) / 1000));
+}
+function formatDuration(seconds) {
+    if (seconds < 60) return Math.round(seconds) + t("miner_bench_sec");
+    if (seconds < 3600) return Math.round(seconds / 60) + " " + t("miner_bench_min");
+    return (seconds / 3600).toFixed(1) + " " + t("miner_bench_hr");
+}
+document.getElementById("benchBtn").addEventListener("click", async () => {
+    const btn = document.getElementById("benchBtn");
+    const resultEl = document.getElementById("benchResult");
+    btn.disabled = true;
+    resultEl.textContent = t("miner_bench_running");
+    const rate = await benchmarkDevice(1500);
+    const info = await apiGet("/info");
+    const avgSeconds = info.difficulty / rate;
+    resultEl.innerHTML = `<span style="color:var(--leaf);font-size:1.4rem;">${fmtNumber(rate)}</span> H/s<br>
+        <span style="color:var(--text-dim);font-size:.85rem;">${t("miner_bench_estimate")} ${formatDuration(avgSeconds)}</span>`;
+    btn.disabled = false;
+    btn.textContent = t("miner_bench_btn");
+});
 
 // --- Kopanie automatyczne w przeglądarce ---
 document.getElementById("autoMineToggle").addEventListener("click", () => {
     const btn = document.getElementById("autoMineToggle");
     if (BrowserMiner.isMining()) {
         BrowserMiner.stop();
-        btn.textContent = "Zacznij kopać";
+        btn.textContent = t("miner_start_btn");
         btn.classList.remove("flame");
     } else {
         const addr = document.getElementById("autoMinerAddress").value.trim();
@@ -139,26 +159,29 @@ document.getElementById("autoMineToggle").addEventListener("click", () => {
                 while (log.children.length > 30) log.removeChild(log.lastChild);
             }
         });
-        btn.textContent = "Zatrzymaj kopanie";
+        btn.textContent = t("miner_stop_btn");
         btn.classList.add("flame");
     }
 });
 
-// --- Solo test ---
-document.getElementById("soloMineBtn").addEventListener("click", async () => {
-    const addr = document.getElementById("soloAddress").value.trim();
-    const resultEl = document.getElementById("soloResult");
-    if (!addr) { alert("Podaj adres BbC"); return; }
-    const btn = document.getElementById("soloMineBtn");
-    btn.disabled = true;
-    resultEl.textContent = "Kopię...";
-    try {
-        const result = await apiPost("/mine/start", { minerAddress: addr });
-        resultEl.textContent = `✅ Blok #${result.blockHeight}, nagroda: ${result.reward} BbC`;
-    } catch (e) {
-        resultEl.textContent = `❌ ${e.message}`;
-    } finally {
-        btn.disabled = false;
+// --- Solo (bezpieczne, w przeglądarce) ---
+document.getElementById("soloAutoToggle").addEventListener("click", () => {
+    const btn = document.getElementById("soloAutoToggle");
+    if (SoloMiner.isMining()) {
+        SoloMiner.stop();
+        btn.textContent = t("miner_solo_start");
+    } else {
+        const addr = document.getElementById("soloAutoAddress").value.trim();
+        if (!addr) { alert("Podaj adres BbC"); return; }
+        SoloMiner.start(addr, API_BASE, {
+            onUpdate: (s) => { document.getElementById("soloAutoBlocks").textContent = s.blocksFound; },
+            onLog: (msg) => {
+                const line = document.createElement("div");
+                line.textContent = msg;
+                document.getElementById("soloAutoLog").prepend(line);
+            }
+        });
+        btn.textContent = t("miner_stop_btn");
     }
 });
 </script>
