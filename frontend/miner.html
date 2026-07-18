@@ -143,6 +143,7 @@ document.getElementById("autoMineToggle").addEventListener("click", () => {
         BrowserMiner.stop();
         btn.textContent = t("miner_start_btn");
         btn.classList.remove("flame");
+        document.getElementById("soloAutoToggle").disabled = false;
     } else {
         const addr = document.getElementById("autoMinerAddress").value.trim();
         if (!addr) { alert("Podaj adres BbC"); return; }
@@ -161,6 +162,7 @@ document.getElementById("autoMineToggle").addEventListener("click", () => {
         });
         btn.textContent = t("miner_stop_btn");
         btn.classList.add("flame");
+        document.getElementById("soloAutoToggle").disabled = true;
     }
 });
 
@@ -170,6 +172,7 @@ document.getElementById("soloAutoToggle").addEventListener("click", () => {
     if (SoloMiner.isMining()) {
         SoloMiner.stop();
         btn.textContent = t("miner_solo_start");
+        document.getElementById("autoMineToggle").disabled = false;
     } else {
         const addr = document.getElementById("soloAutoAddress").value.trim();
         if (!addr) { alert("Podaj adres BbC"); return; }
@@ -178,10 +181,13 @@ document.getElementById("soloAutoToggle").addEventListener("click", () => {
             onLog: (msg) => {
                 const line = document.createElement("div");
                 line.textContent = msg;
-                document.getElementById("soloAutoLog").prepend(line);
+                const log = document.getElementById("soloAutoLog");
+                log.prepend(line);
+                while (log.children.length > 30) log.removeChild(log.lastChild);
             }
         });
         btn.textContent = t("miner_stop_btn");
+        document.getElementById("autoMineToggle").disabled = true;
     }
 });
 </script>
