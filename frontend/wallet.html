@@ -41,6 +41,7 @@
     <a href="miner.html" data-i18n="nav_mining">Kopanie</a>
     <a href="wallet.html" class="active" data-i18n="nav_wallet">Portfel</a>
   </div>
+  <div class="nav-status"><span class="flame-pill" id="navStatus"><span class="flame-dot"></span>łączenie…</span></div>
 </nav>
 
 <div class="page">
@@ -152,7 +153,12 @@
 
     <div class="card" id="sendCard" style="display:none;">
       <h3 data-i18n="wallet_send_title">Wyślij</h3>
-      <div class="field"><label data-i18n="wallet_send_to">Adres odbiorcy</label><input id="sendTo" placeholder="BbC..."></div>
+      <div class="field">
+        <label data-i18n="wallet_send_to">Adres odbiorcy</label>
+        <input id="sendTo" placeholder="BbC..." list="savedContactsList">
+        <datalist id="savedContactsList"></datalist>
+        <div id="contactsQuickPick" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+      </div>
       <div class="field"><label data-i18n="wallet_send_amount">Kwota (BbC)</label><input id="sendAmount" type="number" step="any" placeholder="0.0"></div>
       <div class="field">
         <label data-i18n="wallet_send_fee">Opłata</label>
@@ -175,10 +181,15 @@
 </footer>
 
 <script src="assets/api.js"></script>
+<script src="assets/nav.js"></script>
+<script src="assets/nav-responsive.js"></script>
 <script src="assets/wallet-crypto.js"></script>
 <script src="assets/capsule-crypto.js"></script>
 <script src="assets/i18n.js"></script>
 <script>
+mountSmokeField();
+mountNavStatus();
+
 // --- Zakładki ---
 document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -372,18 +383,69 @@ document.querySelectorAll(".fee-tier-btn").forEach((btn) => {
     });
 });
 
+// --- Zapisani odbiorcy ---
+const CONTACTS_KEY = "bbc_saved_contacts";
+
+function getSavedContacts() {
+    try { return JSON.parse(localStorage.getItem(CONTACTS_KEY)) || []; }
+    catch (e) { return []; }
+}
+function saveSavedContacts(list) {
+    localStorage.setItem(CONTACTS_KEY, JSON.stringify(list));
+}
+function isKnownAddress(address) {
+    return getSavedContacts().some((c) => c.address === address);
+}
+function renderContacts() {
+    const contacts = getSavedContacts();
+    const datalist = document.getElementById("savedContactsList");
+    datalist.innerHTML = contacts.map((c) => `<option value="${c.address}">${escapeHtml(c.label)}</option>`).join("");
+
+    const quickPick = document.getElementById("contactsQuickPick");
+    quickPick.innerHTML = contacts.map((c) => `
+        <button type="button" class="btn secondary contact-chip" data-address="${c.address}" style="padding:6px 10px;font-size:.78rem;">${escapeHtml(c.label)}</button>
+    `).join("");
+    quickPick.querySelectorAll(".contact-chip").forEach((chip) => {
+        chip.addEventListener("click", () => {
+            document.getElementById("sendTo").value = chip.dataset.address;
+            document.getElementById("sendTo").dispatchEvent(new Event("input"));
+        });
+    });
+}
+renderContacts();
+
+// Reset ostrzeżenia o nowym adresie, gdy pole się zmienia
+document.getElementById("sendTo").addEventListener("input", () => {
+    pendingConfirmedAddress = null;
+    const btn = document.getElementById("sendBtn");
+    btn.textContent = t("wallet_send_btn");
+    btn.classList.remove("secondary");
+});
+
+let pendingConfirmedAddress = null;
+
 document.getElementById("sendBtn").addEventListener("click", async () => {
     const resultEl = document.getElementById("sendResult");
     const to = document.getElementById("sendTo").value.trim();
     const amount = Number(document.getElementById("sendAmount").value);
     const fee = Number(document.getElementById("sendFee").value);
+    const btn = document.getElementById("sendBtn");
 
     if (!to) { resultEl.textContent = t("wallet_need_recipient"); return; }
     if (!amount || amount <= 0) { resultEl.textContent = t("wallet_need_amount"); return; }
     if (fee < 0) { resultEl.textContent = t("wallet_fee_negative"); return; }
 
-    const btn = document.getElementById("sendBtn");
+    // Nowy, nierozpoznany adres - wymagaj świadomego drugiego kliknięcia
+    if (!isKnownAddress(to) && pendingConfirmedAddress !== to) {
+        pendingConfirmedAddress = to;
+        btn.textContent = "⚠️ " + t("wallet_confirm_new_address");
+        btn.classList.add("secondary");
+        resultEl.innerHTML = `<span style="color:#ffb3a8;">${t("wallet_new_address_warning")}</span><br><span class="mono" style="word-break:break-all;">${escapeHtml(to)}</span>`;
+        return;
+    }
+
     btn.disabled = true;
+    btn.textContent = t("wallet_signing");
     resultEl.textContent = t("wallet_signing");
 
     try {
@@ -393,12 +455,27 @@ document.getElementById("sendBtn").addEventListener("click", async () => {
 
         const result = await apiPost("/transactions/send", candidate);
         resultEl.textContent = t("wallet_send_success");
+
+        if (!isKnownAddress(to)) {
+            const label = prompt(t("wallet_save_contact_prompt"));
+            if (label && label.trim()) {
+                const contacts = getSavedContacts();
+                contacts.push({ label: label.trim(), address: to });
+                saveSavedContacts(contacts);
+                renderContacts();
+            }
+        }
+
         document.getElementById("sendAmount").value = "";
         document.getElementById("sendTo").value = "";
-        await refreshBalance();
+        pendingConfirmedAddress = null;
     } catch (err) {
         resultEl.textContent = "❌ " + err.message;
     } finally {
+        btn.disabled = false;
+        btn.textContent = t("wallet_send_btn");
+        btn.classList.remove("secondary");
+        await refreshBalance();
         btn.disabled = false;
     }
 });
