@@ -100,6 +100,17 @@
         <input type="checkbox" id="confirmSaved">
         <label for="confirmSaved" style="margin:0;" data-i18n="wallet_confirm_saved">Zapisałem klucz prywatny w bezpiecznym miejscu.</label>
       </div>
+
+      <div class="card" id="rememberFromGenerateCard" style="display:none;border-color:var(--flame);">
+        <h3>💾 Zapamiętać ten portfel na tym urządzeniu?</h3>
+        <p style="font-size:.85rem;">Zaszyfrowany prawdziwym hasłem (AES-256) — następnym razem tylko hasło, bez wklejania kluczy.</p>
+        <div class="field">
+          <label>Ustaw hasło</label>
+          <input id="rememberFromGeneratePassword" type="password" placeholder="Nowe hasło do tego urządzenia">
+        </div>
+        <button class="btn secondary" id="rememberFromGenerateBtn">Zapamiętaj</button>
+        <div id="rememberFromGenerateStatus" style="margin-top:8px;font-family:var(--font-mono);font-size:.85rem;"></div>
+      </div>
     </div>
   </div>
 
@@ -216,12 +227,28 @@ document.getElementById("generateBtn").addEventListener("click", async () => {
         document.getElementById("results").style.display = "block";
         document.getElementById("confirmSaved").checked = false;
         document.getElementById("results").scrollIntoView({ behavior: "smooth" });
+        if (!hasRememberedWallet()) {
+            document.getElementById("rememberFromGenerateCard").style.display = "block";
+        }
     } catch (err) {
         alert(t("wallet_generate_error") + err.message);
     } finally {
         btn.disabled = false;
         btn.textContent = t("wallet_generate_btn");
     }
+});
+
+document.getElementById("rememberFromGenerateBtn").addEventListener("click", async () => {
+    const password = document.getElementById("rememberFromGeneratePassword").value;
+    const statusEl = document.getElementById("rememberFromGenerateStatus");
+    if (!password || password.length < 4) { statusEl.style.color = "var(--danger)"; statusEl.textContent = "Hasło za krótkie."; return; }
+    if (!lastGenerated) { statusEl.style.color = "var(--danger)"; statusEl.textContent = "Najpierw wygeneruj portfel."; return; }
+    const bundleText = lastGenerated.publicKeyPem + "\n" + lastGenerated.privateKeyPem;
+    const encrypted = await encryptCapsuleMessage(bundleText, password);
+    localStorage.setItem(REMEMBERED_WALLET_KEY, JSON.stringify(encrypted));
+    statusEl.style.color = "var(--leaf)";
+    statusEl.textContent = "✓ Zapisano. Następnym razem wystarczy hasło, w zakładce \"Mój portfel\".";
+    document.getElementById("rememberFromGeneratePassword").value = "";
 });
 
 document.getElementById("downloadBundleBtn").addEventListener("click", () => {
