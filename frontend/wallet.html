@@ -101,12 +101,36 @@
 
   <!-- ========== MÓJ PORTFEL (wyślij/odbierz) ========== -->
   <div class="tab-panel" id="tab-manage">
+    <div class="card" id="unlockCard" style="display:none;">
+      <h3>🔒 Masz zapisany portfel na tym urządzeniu</h3>
+      <div class="field">
+        <label>Hasło</label>
+        <input id="unlockPassword" type="password" placeholder="Twoje hasło">
+      </div>
+      <div class="btn-row">
+        <button class="btn flame" id="unlockBtn">Odblokuj</button>
+        <button class="btn secondary" id="forgetWalletBtn" style="font-size:.8rem;">Zapomnij ten portfel</button>
+      </div>
+      <div id="unlockError" class="error-banner" style="display:none;margin-top:10px;"></div>
+    </div>
+
     <div class="card" id="importCard">
       <h3 data-i18n="wallet_import_title">Wczytaj portfel</h3>
       <p data-i18n="wallet_import_hint">Wklej tutaj treść pliku, który pobrałeś przy tworzeniu portfela (oba klucze naraz — rozpoznam je same).</p>
       <textarea id="importBundle" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----BEGIN PUBLIC KEY-----&#10;..."></textarea>
       <button class="btn" id="loadWalletBtn" style="margin-top:10px;" data-i18n="wallet_load_btn">Wczytaj portfel</button>
       <div id="importError" class="error-banner" style="display:none;margin-top:10px;"></div>
+    </div>
+
+    <div class="card" id="rememberCard" style="display:none;">
+      <h3>💾 Zapamiętać ten portfel tutaj?</h3>
+      <p style="font-size:.85rem;">Zaszyfrowany prawdziwym hasłem (AES-256) — następnym razem tylko hasło, bez wklejania kluczy. Zgubione hasło = trzeba wczytać portfel od nowa wklejeniem (klucze nadal masz w swoim pliku).</p>
+      <div class="field">
+        <label>Ustaw hasło</label>
+        <input id="rememberPassword" type="password" placeholder="Nowe hasło do tego urządzenia">
+      </div>
+      <button class="btn secondary" id="rememberBtn">Zapamiętaj</button>
+      <div id="rememberStatus" style="margin-top:8px;font-family:var(--font-mono);font-size:.85rem;"></div>
     </div>
 
     <div class="card" id="receiveCard" style="display:none;">
@@ -139,6 +163,7 @@
 
 <script src="assets/api.js"></script>
 <script src="assets/wallet-crypto.js"></script>
+<script src="assets/capsule-crypto.js"></script>
 <script src="assets/i18n.js"></script>
 <script>
 // --- Zakładki ---
@@ -203,31 +228,86 @@ window.addEventListener("beforeunload", (e) => {
 
 // --- Wczytywanie istniejącego portfela ---
 let currentWallet = null; // { address, publicKeyPem, privateKey: CryptoKey }
+let currentBundleText = null; // surowy tekst kluczy - potrzebny tylko do ewentualnego zapisania zaszyfrowanego
 
-document.getElementById("loadWalletBtn").addEventListener("click", async () => {
+const REMEMBERED_WALLET_KEY = "bbc_encrypted_wallet";
+
+function hasRememberedWallet() {
+    return localStorage.getItem(REMEMBERED_WALLET_KEY) !== null;
+}
+
+async function loadWalletFromBundleText(text) {
     const errorEl = document.getElementById("importError");
     errorEl.style.display = "none";
-    const text = document.getElementById("importBundle").value;
     const { publicKeyPem, privateKeyPem } = parseWalletBundle(text);
 
     if (!publicKeyPem || !privateKeyPem) {
         errorEl.textContent = t("wallet_import_error");
         errorEl.style.display = "block";
-        return;
+        return false;
     }
 
-    try {
-        const address = await deriveAddressFromPublicKeyPem(publicKeyPem);
-        const privateKey = await importPrivateKeyFromPem(privateKeyPem);
-        currentWallet = { address, publicKeyPem, privateKey };
+    const address = await deriveAddressFromPublicKeyPem(publicKeyPem);
+    const privateKey = await importPrivateKeyFromPem(privateKeyPem);
+    currentWallet = { address, publicKeyPem, privateKey };
+    currentBundleText = text;
 
-        document.getElementById("myAddress").textContent = address;
-        document.getElementById("receiveCard").style.display = "block";
-        document.getElementById("sendCard").style.display = "block";
-        await refreshBalance();
-    } catch (err) {
+    document.getElementById("myAddress").textContent = address;
+    document.getElementById("receiveCard").style.display = "block";
+    document.getElementById("sendCard").style.display = "block";
+    await refreshBalance();
+    return true;
+}
+
+// Przy starcie - jeśli jest zapamiętany portfel, pokaż odblokowanie zamiast wklejania
+if (hasRememberedWallet()) {
+    document.getElementById("unlockCard").style.display = "block";
+    document.getElementById("importCard").style.display = "none";
+}
+
+document.getElementById("unlockBtn").addEventListener("click", async () => {
+    const password = document.getElementById("unlockPassword").value;
+    const errorEl = document.getElementById("unlockError");
+    errorEl.style.display = "none";
+    if (!password) return;
+    try {
+        const stored = JSON.parse(localStorage.getItem(REMEMBERED_WALLET_KEY));
+        const bundleText = await decryptCapsuleMessage(stored.ciphertext, stored.salt, stored.iv, password);
+        const ok = await loadWalletFromBundleText(bundleText);
+        if (!ok) { errorEl.textContent = "Zapisane dane są uszkodzone."; errorEl.style.display = "block"; }
+    } catch (e) {
+        errorEl.textContent = "Złe hasło.";
+        errorEl.style.display = "block";
+    }
+});
+
+document.getElementById("forgetWalletBtn").addEventListener("click", () => {
+    if (!confirm("Na pewno? Usunie to zapisaną, zaszyfrowaną kopię z TEGO urządzenia (Twoje klucze w pliku, jeśli go masz, nie znikają).")) return;
+    localStorage.removeItem(REMEMBERED_WALLET_KEY);
+    document.getElementById("unlockCard").style.display = "none";
+    document.getElementById("importCard").style.display = "block";
+});
+
+document.getElementById("rememberBtn").addEventListener("click", async () => {
+    const password = document.getElementById("rememberPassword").value;
+    const statusEl = document.getElementById("rememberStatus");
+    if (!password || password.length < 4) { statusEl.style.color = "var(--danger)"; statusEl.textContent = "Hasło za krótkie."; return; }
+    const encrypted = await encryptCapsuleMessage(currentBundleText, password);
+    localStorage.setItem(REMEMBERED_WALLET_KEY, JSON.stringify(encrypted));
+    statusEl.style.color = "var(--leaf)";
+    statusEl.textContent = "✓ Zapisano. Następnym razem wystarczy hasło.";
+    document.getElementById("rememberPassword").value = "";
+});
+
+document.getElementById("loadWalletBtn").addEventListener("click", async () => {
+    const ok = await loadWalletFromBundleText(document.getElementById("importBundle").value).catch((err) => {
+        const errorEl = document.getElementById("importError");
         errorEl.textContent = t("wallet_load_error") + err.message;
         errorEl.style.display = "block";
+        return false;
+    });
+    if (ok && !hasRememberedWallet()) {
+        document.getElementById("rememberCard").style.display = "block";
     }
 });
 
