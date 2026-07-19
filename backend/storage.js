@@ -1,116 +1,51 @@
 const { DatabaseSync } = require("node:sqlite");
 
-/**
- * Cienka warstwa nad SQLite (node:sqlite - wbudowane w Node 22+, eksperymentalne,
- * ale synchroniczne i bez żadnej dodatkowej zależności w package.json).
- *
- * Łańcuch nadal żyje w pamięci (Blockchain.chain) - to jest tylko zapis/odczyt
- * tego stanu, żeby przeżył restart procesu. Baza nie jest "źródłem prawdy" w locie,
- * jest kopią zapasową odtwarzaną przy starcie.
- */
 class Storage {
-    constructor(path) {
-        this.db = new DatabaseSync(path);
+    constructor(dbPath) {
+        this.db = new DatabaseSync(dbPath);
         this.db.exec("PRAGMA journal_mode = WAL");
         this.db.exec("PRAGMA foreign_keys = ON");
         this._initSchema();
     }
 
     _initSchema() {
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS blocks (
-                height INTEGER PRIMARY KEY,
-                timestamp INTEGER NOT NULL,
-                previousHash TEXT NOT NULL,
-                hash TEXT NOT NULL,
-                nonce INTEGER NOT NULL,
-                difficulty REAL NOT NULL
-            )
-        `);
-
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                blockHeight INTEGER NOT NULL,
-                from_address TEXT,
-                to_address TEXT NOT NULL,
-                amount REAL NOT NULL,
-                type TEXT NOT NULL,
-                FOREIGN KEY (blockHeight) REFERENCES blocks(height)
-            )
-        `);
-
+        this.db.exec(`CREATE TABLE IF NOT EXISTS blocks (
+            height INTEGER PRIMARY KEY, timestamp INTEGER NOT NULL,
+            previousHash TEXT NOT NULL, hash TEXT NOT NULL,
+            nonce INTEGER NOT NULL, difficulty REAL NOT NULL
+        )`);
+        this.db.exec(`CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, blockHeight INTEGER NOT NULL,
+            from_address TEXT, to_address TEXT NOT NULL, amount REAL NOT NULL,
+            type TEXT NOT NULL, fee REAL, timestamp INTEGER, publicKey TEXT, signature TEXT,
+            FOREIGN KEY (blockHeight) REFERENCES blocks(height)
+        )`);
+        this.db.exec(`CREATE TABLE IF NOT EXISTS mempool (
+            signature TEXT PRIMARY KEY, from_address TEXT, to_address TEXT,
+            amount REAL, fee REAL, timestamp INTEGER, publicKey TEXT
+        )`);
+        this.db.exec(`CREATE TABLE IF NOT EXISTS pool_credits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, minerAddress TEXT NOT NULL,
+            blockHeight INTEGER NOT NULL, shares INTEGER NOT NULL,
+            amount REAL NOT NULL, timestamp INTEGER NOT NULL, paid INTEGER DEFAULT 0
+        )`);
         this.db.exec("CREATE INDEX IF NOT EXISTS idx_tx_block ON transactions(blockHeight)");
-        this.db.exec("CREATE INDEX IF NOT EXISTS idx_tx_to ON transactions(to_address)");
-        this.db.exec("CREATE INDEX IF NOT EXISTS idx_tx_from ON transactions(from_address)");
-
-        // Rozliczenia puli: ile dany adres zarobił udziałem w danej rundzie (bloku).
-        // To dług/należność, NIE przelew on-chain - patrz komentarz w pool.js.
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS pool_credits (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                minerAddress TEXT NOT NULL,
-                blockHeight INTEGER NOT NULL,
-                shares INTEGER NOT NULL,
-                amount REAL NOT NULL,
-                timestamp INTEGER NOT NULL
-            )
-        `);
         this.db.exec("CREATE INDEX IF NOT EXISTS idx_credits_miner ON pool_credits(minerAddress)");
+        this.db.exec("CREATE INDEX IF NOT EXISTS idx_credits_paid ON pool_credits(paid)");
 
-        // Mempool: transakcje zaakceptowane (podpis OK, saldo starcza), ale jeszcze
-        // niewykopane w żadnym bloku. Trzymane trwale, żeby restart serwera ich nie gubił.
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS mempool (
-                signature TEXT PRIMARY KEY,
-                from_address TEXT NOT NULL,
-                to_address TEXT NOT NULL,
-                amount REAL NOT NULL,
-                fee REAL NOT NULL,
-                timestamp INTEGER NOT NULL,
-                publicKey TEXT NOT NULL,
-                receivedAt INTEGER NOT NULL
-            )
-        `);
-        this.db.exec("CREATE INDEX IF NOT EXISTS idx_mempool_from ON mempool(from_address)");
-
-        this._insertBlock = this.db.prepare(
-            "INSERT INTO blocks (height, timestamp, previousHash, hash, nonce, difficulty) VALUES (?, ?, ?, ?, ?, ?)"
-        );
-        this._insertTx = this.db.prepare(
-            "INSERT INTO transactions (blockHeight, from_address, to_address, amount, type) VALUES (?, ?, ?, ?, ?)"
-        );
-        this._insertCredit = this.db.prepare(
-            "INSERT INTO pool_credits (minerAddress, blockHeight, shares, amount, timestamp) VALUES (?, ?, ?, ?, ?)"
-        );
-        this._selectCredits = this.db.prepare(
-            "SELECT * FROM pool_credits WHERE minerAddress = ? ORDER BY blockHeight ASC"
-        );
-        this._insertMempoolTx = this.db.prepare(
-            "INSERT OR REPLACE INTO mempool (signature, from_address, to_address, amount, fee, timestamp, publicKey, receivedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-        );
-        this._deleteMempoolTx = this.db.prepare("DELETE FROM mempool WHERE signature = ?");
-        this._selectMempool = this.db.prepare("SELECT * FROM mempool ORDER BY fee DESC, receivedAt ASC");
+        this._insertBlock = this.db.prepare("INSERT INTO blocks (height, timestamp, previousHash, hash, nonce, difficulty) VALUES (?, ?, ?, ?, ?, ?)");
+        this._insertTx = this.db.prepare("INSERT INTO transactions (blockHeight, from_address, to_address, amount, type, fee, timestamp, publicKey, signature) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        this._insertCredit = this.db.prepare("INSERT INTO pool_credits (minerAddress, blockHeight, shares, amount, timestamp) VALUES (?, ?, ?, ?, ?)");
     }
 
-    hasBlocks() {
-        return this.db.prepare("SELECT COUNT(*) AS n FROM blocks").get().n > 0;
-    }
+    hasBlocks() { return this.db.prepare("SELECT COUNT(*) AS n FROM blocks").get().n > 0; }
 
-    // Zapisuje blok + jego transakcje atomowo (jedna transakcja SQL - albo wszystko, albo nic)
     saveBlock(block) {
         this.db.exec("BEGIN");
         try {
-            this._insertBlock.run(
-                block.height,
-                block.timestamp,
-                block.previousHash,
-                block.hash,
-                block.nonce,
-                block.difficulty
-            );
+            this._insertBlock.run(block.height, block.timestamp, block.previousHash, block.hash, block.nonce, block.difficulty);
             for (const tx of block.transactions) {
-                this._insertTx.run(block.height, tx.from ?? null, tx.to, tx.amount, tx.type);
+                this._insertTx.run(block.height, tx.from ?? null, tx.to, tx.amount, tx.type, tx.fee ?? null, tx.timestamp ?? null, tx.publicKey ?? null, tx.signature ?? null);
             }
             this.db.exec("COMMIT");
         } catch (err) {
@@ -119,98 +54,56 @@ class Storage {
         }
     }
 
-    // Wczytuje cały łańcuch posortowany rosnąco, z transakcjami dociągniętymi do bloków
     loadChain() {
         const blockRows = this.db.prepare("SELECT * FROM blocks ORDER BY height ASC").all();
-        const txStmt = this.db.prepare(
-            "SELECT * FROM transactions WHERE blockHeight = ? ORDER BY id ASC"
-        );
-
+        const txStmt = this.db.prepare("SELECT * FROM transactions WHERE blockHeight = ? ORDER BY id ASC");
         return blockRows.map((row) => ({
-            height: row.height,
-            timestamp: row.timestamp,
-            previousHash: row.previousHash,
-            hash: row.hash,
-            nonce: row.nonce,
-            difficulty: row.difficulty,
+            height: row.height, timestamp: row.timestamp, previousHash: row.previousHash,
+            hash: row.hash, nonce: row.nonce, difficulty: row.difficulty,
             transactions: txStmt.all(row.height).map((tx) => ({
-                from: tx.from_address,
-                to: tx.to_address,
-                amount: tx.amount,
-                type: tx.type
+                from: tx.from_address, to: tx.to_address, amount: tx.amount, type: tx.type,
+                fee: tx.fee ?? undefined, timestamp: tx.timestamp ?? undefined,
+                publicKey: tx.publicKey ?? undefined, signature: tx.signature ?? undefined
             }))
         }));
     }
 
-    // Zastępuje CAŁĄ zawartość bazy nowym łańcuchem (synchronizacja P2P, gdy peer
-    // ma dłuższy poprawny łańcuch). Atomowo - albo zapisze się cały, albo wcale.
-    replaceChain(records) {
-        this.db.exec("BEGIN");
-        try {
-            this.db.exec("DELETE FROM transactions");
-            this.db.exec("DELETE FROM blocks");
-            for (const r of records) {
-                this._insertBlock.run(r.height, r.timestamp, r.previousHash, r.hash, r.nonce, r.difficulty);
-                for (const tx of r.transactions) {
-                    this._insertTx.run(r.height, tx.from ?? null, tx.to, tx.amount, tx.type);
-                }
-            }
-            this.db.exec("COMMIT");
-        } catch (err) {
-            this.db.exec("ROLLBACK");
-            throw err;
-        }
-    }
-
-    close() {
-        this.db.close();
-    }
-
-    saveCredit(credit) {
-        this._insertCredit.run(
-            credit.minerAddress,
-            credit.blockHeight,
-            credit.shares,
-            credit.amount,
-            credit.timestamp
-        );
-    }
-
-    getCredits(minerAddress) {
-        const rows = this._selectCredits.all(minerAddress);
-        const totalCredited = rows.reduce((sum, r) => sum + r.amount, 0);
-        return { minerAddress, totalCredited, entries: rows };
-    }
-
-    saveMempoolTx(tx) {
-        this._insertMempoolTx.run(
-            tx.signature,
-            tx.from,
-            tx.to,
-            tx.amount,
-            tx.fee,
-            tx.timestamp,
-            tx.publicKey,
-            tx.receivedAt
-        );
-    }
-
-    deleteMempoolTx(signature) {
-        this._deleteMempoolTx.run(signature);
-    }
-
     loadMempool() {
-        return this._selectMempool.all().map((row) => ({
-            from: row.from_address,
-            to: row.to_address,
-            amount: row.amount,
-            fee: row.fee,
-            timestamp: row.timestamp,
-            publicKey: row.publicKey,
-            signature: row.signature,
-            receivedAt: row.receivedAt
+        return this.db.prepare("SELECT * FROM mempool").all().map((tx) => ({
+            from: tx.from_address, to: tx.to_address, amount: tx.amount,
+            fee: tx.fee, timestamp: tx.timestamp, publicKey: tx.publicKey, signature: tx.signature
         }));
     }
+    saveMempoolTx(tx) {
+        this.db.prepare("INSERT OR REPLACE INTO mempool (signature, from_address, to_address, amount, fee, timestamp, publicKey) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .run(tx.signature, tx.from, tx.to, tx.amount, tx.fee, tx.timestamp, tx.publicKey);
+    }
+    deleteMempoolTx(signature) { this.db.prepare("DELETE FROM mempool WHERE signature = ?").run(signature); }
+
+    saveCredit(c) { this._insertCredit.run(c.minerAddress, c.blockHeight, c.shares, c.amount, c.timestamp); }
+
+    getKnownPoolMiners() {
+        return this.db.prepare(`SELECT minerAddress, SUM(amount) as totalCredits, MAX(blockHeight) as lastBlockHeight, COUNT(*) as roundsParticipated
+                                  FROM pool_credits GROUP BY minerAddress ORDER BY lastBlockHeight DESC`).all();
+    }
+
+    getUnpaidCreditsSummary() {
+        const rows = this.db.prepare("SELECT * FROM pool_credits WHERE paid = 0").all();
+        const byAddress = new Map();
+        for (const row of rows) {
+            const entry = byAddress.get(row.minerAddress) || { minerAddress: row.minerAddress, total: 0, creditIds: [] };
+            entry.total += row.amount;
+            entry.creditIds.push(row.id);
+            byAddress.set(row.minerAddress, entry);
+        }
+        return Array.from(byAddress.values());
+    }
+    markCreditsPaid(creditIds) {
+        const stmt = this.db.prepare("UPDATE pool_credits SET paid = 1 WHERE id = ?");
+        for (const id of creditIds) stmt.run(id);
+    }
+
+    close() { this.db.close(); }
 }
 
 module.exports = Storage;
