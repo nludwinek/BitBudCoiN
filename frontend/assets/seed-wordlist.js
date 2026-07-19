@@ -1,0 +1,30 @@
+// Lista 256 prostych słów do frazy odzyskiwania BitBudCoin.
+const SEED_WORDLIST = [
+"able","acid","aged","also","area","army","away","baby","back","ball",
+"band","bank","base","bath","bean","bear","beat","bell","belt","bend",
+"best","bike","bird","blue","boat","body","bold","bolt","bone","book",
+"boot","born","boss","both","bowl","boys","bulk","burn","bush","busy",
+"cake","call","calm","camp","card","care","case","cash","cast","cave",
+"cell","chat","chip","city","clay","clip","club","coal","coat","code",
+"cold","come","cook","cool","cope","copy","cord","core","corn","cost",
+"crop","dark","dawn","days","deal","dear","debt","deep","deny","desk",
+"dial","diet","dirt","dish","dive","dock","does","done","door","dose",
+"down","draw","drop","drug","drum","dust","duty","each","earn","ease",
+"east","easy","edge","else","even","ever","evil","exit","face","fact",
+"fair","fall","farm","fast","fear","feed","feel","file","fill","film",
+"find","fine","fire","firm","fish","fist","five","flag","flat","flow",
+"folk","fond","food","fool","foot","fork","form","fort","four","free",
+"from","fuel","full","fund","gain","game","gate","gaze","gear","gift",
+"girl","give","glad","goal","goat","gold","golf","good","grew","grey",
+"grip","grow","gulf","hair","half","hall","hand","hang","hard","harm",
+"hate","have","head","heal","heap","hear","heat","help","herb","here",
+"hero","hide","high","hill","hint","hire","hold","hole","holy","home",
+"hope","horn","hour","huge","hunt","hurt","idea","inch","into","iron",
+"item","join","joke","jump","june","just","keen","keep","kick","kind",
+"king","knee","knew","know","lack","lady","lake","lamp","land","lane",
+"last","late","lawn","lead","leaf","lean","left","lens","less","life",
+"lift","like","line","link","lion","list","live","load","loan","lock",
+"logo","long","look","loop","lord","lose","loss","lost","loud","love",
+"luck","lump","lung","made","mail","main"
+];
+
