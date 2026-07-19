@@ -174,9 +174,9 @@
       <div class="field">
         <label data-i18n="wallet_send_fee">Opłata</label>
         <div class="fee-tiers">
-          <button type="button" class="fee-tier-btn" data-fee="0.001">Low</button>
-          <button type="button" class="fee-tier-btn active" data-fee="0.01">Fast</button>
-          <button type="button" class="fee-tier-btn" data-fee="0.05">Turbo</button>
+          <button type="button" class="fee-tier-btn" data-fee="low">Low</button>
+          <button type="button" class="fee-tier-btn active" data-fee="fast">Fast</button>
+          <button type="button" class="fee-tier-btn" data-fee="turbo">Turbo</button>
           <button type="button" class="fee-tier-btn" data-fee="manual">Manual</button>
         </div>
         <input id="sendFee" type="number" step="any" value="0.01" readonly>
@@ -394,7 +394,28 @@ document.getElementById("shareAddrBtn").addEventListener("click", async () => {
 });
 
 // --- Wysyłanie ---
-// --- Poziomy opłaty ---
+// --- Poziomy opłaty: rosną razem z kwotą, z minimum na dole ---
+function calculateTierFee(tier, amount) {
+    const amt = Math.max(0, Number(amount) || 0);
+    if (tier === "low") return Math.max(0.001, amt * 0.0005);   // 0,05% kwoty, min 0.001
+    if (tier === "fast") return Math.max(0.003, amt * 0.0015);  // 0,15% kwoty, min 0.003
+    if (tier === "turbo") return Math.max(0.008, amt * 0.004);  // 0,4% kwoty, min 0.008
+    return null;
+}
+function fmtFee(n) {
+    return Number(n.toFixed(6)).toString();
+}
+function activeTier() {
+    const btn = document.querySelector(".fee-tier-btn.active");
+    return btn ? btn.dataset.fee : null;
+}
+function refreshTierFee() {
+    const tier = activeTier();
+    if (!tier || tier === "manual") return;
+    const amount = document.getElementById("sendAmount").value;
+    document.getElementById("sendFee").value = fmtFee(calculateTierFee(tier, amount));
+}
+
 document.querySelectorAll(".fee-tier-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
         document.querySelectorAll(".fee-tier-btn").forEach((b) => b.classList.remove("active"));
@@ -405,10 +426,12 @@ document.querySelectorAll(".fee-tier-btn").forEach((btn) => {
             feeInput.focus();
         } else {
             feeInput.readOnly = true;
-            feeInput.value = btn.dataset.fee;
+            refreshTierFee();
         }
     });
 });
+document.getElementById("sendAmount").addEventListener("input", refreshTierFee);
+refreshTierFee();
 
 // --- Zapisani odbiorcy ---
 const CONTACTS_KEY = "bbc_saved_contacts";
