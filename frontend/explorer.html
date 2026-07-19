@@ -8,6 +8,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/theme.css">
+<style>
+  .journal-entry { border-left: 3px solid var(--leaf-dim); padding: 14px 0 14px 18px; margin-bottom: 4px; cursor: pointer; transition: border-color .15s; }
+  .journal-entry:hover { border-left-color: var(--leaf); background: var(--surface-2); }
+  .journal-entry .je-height { font-family: var(--font-display); font-weight: 600; color: var(--leaf); font-size: 1.05rem; }
+  .journal-entry .je-story { color: var(--text); font-size: .92rem; margin: 4px 0; line-height: 1.5; }
+  .journal-entry .je-meta { font-family: var(--font-mono); font-size: .74rem; color: var(--text-dim); }
+</style>
 </head>
 <body>
 
@@ -30,17 +37,14 @@
 </nav>
 
 <div class="page">
-    <h1 style="margin-top:32px;">Block explorer</h1>
-    <p>Każdy wykopany blok, jawnie. Kliknij wiersz, żeby zobaczyć pełne transakcje.</p>
+    <h1 style="margin-top:32px;">Dziennik łańcucha</h1>
+    <p>Każdy wykopany blok to prawdziwa chwila czyjejś pracy. Kliknij wpis, żeby zobaczyć pełne transakcje.</p>
     <div id="error-box"></div>
 
-    <div class="card" style="padding:0; overflow:hidden;">
-        <table>
-            <thead><tr><th>Wysokość</th><th>Kiedy</th><th>Hash</th><th>Transakcje</th><th>Trudność</th></tr></thead>
-            <tbody id="blocks-tbody">
-                <tr><td colspan="5" class="skeleton">ładowanie ładowanie ładowanie ładowanie ładowanie</td></tr>
-            </tbody>
-        </table>
+    <div class="card" style="padding:8px 20px;">
+        <div id="blocks-journal">
+            <div class="skeleton" style="height:80px;margin-bottom:8px;"></div>
+        </div>
     </div>
 
     <div style="text-align:center; margin-top:20px;">
@@ -56,41 +60,70 @@
 setActiveNav("nav-explorer");
 
 let oldestLoaded = null;
+let lastKnownTimestamp = null; // do liczenia "ile to trwało" dla kolejnych doładowań
 
-function renderRows(blocks, append) {
-    const tbody = document.getElementById("blocks-tbody");
-    const rows = blocks.map(b => {
-        const coinbase = b.transactions.find(t => t.type === "coinbase" || t.type === "genesis");
-        return `<tr onclick="location.href='block.html?height=${b.height}'" style="cursor:pointer">
-            <td>${b.height}</td>
-            <td>${timeAgo(b.timestamp)}</td>
-            <td class="truncate">${fmtHash(b.hash)}</td>
-            <td>${b.transactions.length}</td>
-            <td>${fmtNumber(b.difficulty, 0)}</td>
-        </tr>`;
+function blockStory(block, previousTimestamp) {
+    const coinbase = block.transactions.find(t => t.type === "coinbase" || t.type === "genesis");
+    const txCount = block.transactions.length;
+    const otherTx = txCount - 1;
+
+    if (block.height === 0) {
+        return `Początek. Pierwszy blok tego łańcucha, zapisany na stałe — ${fmtNumber(coinbase ? coinbase.amount : 0)} BbC rozdane na start.`;
+    }
+
+    let durationText = "";
+    if (previousTimestamp) {
+        const seconds = Math.max(0, Math.round((block.timestamp - previousTimestamp) / 1000));
+        if (seconds < 60) durationText = `${seconds}s`;
+        else if (seconds < 3600) durationText = `${Math.round(seconds / 60)} min`;
+        else durationText = `${(seconds / 3600).toFixed(1)} godz.`;
+    }
+
+    const workPhrase = durationText
+        ? `Ktoś spędził ${durationText}, żeby to udowodnić`
+        : `Ktoś udowodnił prawdziwą pracę`;
+
+    const txPhrase = otherTx > 0
+        ? ` — przy okazji ${otherTx} ${otherTx === 1 ? "transakcja przeszła" : "transakcje przeszły"} do historii.`
+        : `.`;
+
+    return `${workPhrase}${txPhrase}`;
+}
+
+function renderJournal(blocks, append) {
+    const container = document.getElementById("blocks-journal");
+    const html = blocks.map((b, i) => {
+        const prevTs = blocks[i + 1] ? blocks[i + 1].timestamp : (i === blocks.length - 1 ? lastKnownTimestamp : null);
+        const story = blockStory(b, prevTs);
+        return `<div class="journal-entry" onclick="location.href='block.html?height=${b.height}'">
+            <div class="je-height">Blok #${b.height} <span style="color:var(--text-dim);font-weight:400;font-size:.8rem;">· ${timeAgo(b.timestamp)} temu</span></div>
+            <div class="je-story">${story}</div>
+            <div class="je-meta">trudność ${fmtNumber(b.difficulty, 0)} · ${fmtHash(b.hash)}</div>
+        </div>`;
     }).join("");
-    tbody.innerHTML = append ? tbody.innerHTML + rows : rows;
+    container.innerHTML = append ? container.innerHTML + html : html;
+    if (blocks.length > 0) lastKnownTimestamp = blocks[blocks.length - 1].timestamp;
 }
 
 async function loadInitial() {
     try {
         const blocks = await apiGet("/blocks?limit=15");
         if (blocks.length === 0) {
-            document.getElementById("blocks-tbody").innerHTML = '<tr><td colspan="5"><div class="empty-state"><div class="glyph">🌱</div>Tylko genesis na razie — wykop pierwszy blok w <a href="miner.html">Minerze</a></div></td></tr>';
+            document.getElementById("blocks-journal").innerHTML = '<div class="empty-state"><div class="glyph">🌱</div>Tylko genesis na razie — wykop pierwszy blok w <a href="miner.html">Minerze</a></div>';
             return;
         }
-        renderRows(blocks, false);
+        renderJournal(blocks, false);
         oldestLoaded = blocks[blocks.length - 1].height;
         if (oldestLoaded > 0) document.getElementById("load-more").style.display = "inline-flex";
     } catch (e) {
         document.getElementById("error-box").innerHTML = `<div class="error-banner">Nie można połączyć się z backendem: ${escapeHtml(e.message)}</div>`;
-        document.getElementById("blocks-tbody").innerHTML = "";
+        document.getElementById("blocks-journal").innerHTML = "";
     }
 }
 
 document.getElementById("load-more").addEventListener("click", async () => {
     const blocks = await apiGet(`/blocks?limit=15&before=${oldestLoaded}`);
-    renderRows(blocks, true);
+    renderJournal(blocks, true);
     if (blocks.length === 0 || blocks[blocks.length - 1].height === 0) {
         document.getElementById("load-more").style.display = "none";
     } else {
