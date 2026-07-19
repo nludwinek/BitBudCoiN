@@ -123,3 +123,21 @@ setInterval(load, 15000);
 </script>
 </body>
 </html>
+<div class="card">
+  <h3>Znani górnicy</h3>
+  <div id="minersListBox"></div>
+</div>
+<script>
+(async () => {
+  try {
+    const miners = await apiGet("/network/miners");
+    document.getElementById("minersListBox").innerHTML = miners.length === 0
+      ? '<p style="color:var(--text-dim);">Na razie tylko Ty.</p>'
+      : miners.map(m => `<div style="padding:8px 0;border-bottom:1px solid var(--border);font-family:var(--font-mono);font-size:.85rem;">
+          ${m.address.slice(0,14)}...${m.address.slice(-6)} · ${m.source === "pool" ? "pula" : "solo"} · ${fmtNumber(m.totalEarned)} BbC · ostatnio blok #${m.lastBlockHeight}
+        </div>`).join("");
+  } catch (e) {
+    document.getElementById("minersListBox").innerHTML = '<p style="color:var(--text-dim);">Niedostępne.</p>';
+  }
+})();
+</script>
