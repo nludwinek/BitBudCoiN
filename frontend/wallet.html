@@ -72,13 +72,7 @@
       </div>
     </div>
 
-    <div class="card">
-      <h3>Mam już frazę</h3>
-      <p style="font-size:.85rem;">Wpisz swoje 12 słów, oddzielone spacją, w tej samej kolejności co przy zapisywaniu.</p>
-      <textarea id="phraseRecoverInput" placeholder="np. drum here link fork help left chip join give call corn goat" style="min-height:70px;"></textarea>
-      <button class="btn secondary" id="recoverPhraseBtn" style="margin-top:10px;">Odzyskaj portfel</button>
-      <div id="phraseRecoverError" class="error-banner" style="display:none;margin-top:10px;"></div>
-    </div>
+    <p style="font-size:.85rem;color:var(--text-dim);">Masz już frazę albo stary klucz? Przejdź do zakładki <strong>Mój portfel</strong> — jedno pole rozpozna, co wkleisz.</p>
   </div>
 
   <!-- ========== TWORZENIE NOWEGO ========== -->
@@ -160,12 +154,13 @@
     </div>
 
     <div class="card" id="importCard">
-      <h3 data-i18n="wallet_import_title">Wczytaj portfel</h3>
-      <p data-i18n="wallet_import_hint">Wklej tutaj treść pliku, który pobrałeś przy tworzeniu portfela (oba klucze naraz — rozpoznam je same).</p>
-      <textarea id="importBundle" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----BEGIN PUBLIC KEY-----&#10;..."></textarea>
-      <button class="btn" id="loadWalletBtn" style="margin-top:10px;" data-i18n="wallet_load_btn">Wczytaj portfel</button>
+      <h3>Zaloguj się</h3>
+      <p>Wklej swoje stare klucze <strong>albo</strong> wpisz 12 słów — rozpoznam samo, co to jest.</p>
+      <textarea id="importBundle" placeholder="Klucze (-----BEGIN PRIVATE KEY-----...) albo 12 słów oddzielonych spacją"></textarea>
+      <button class="btn" id="loadWalletBtn" style="margin-top:10px;">Zaloguj się</button>
       <div id="importError" class="error-banner" style="display:none;margin-top:10px;"></div>
     </div>
+
 
     <div class="card" id="rememberCard" style="display:none;">
       <h3>💾 Zapamiętać ten portfel tutaj?</h3>
@@ -368,29 +363,6 @@ document.getElementById("usePhraseWalletBtn").addEventListener("click", async ()
     await loadWalletFromBundleText(bundleText);
 });
 
-// --- Fraza 12 słów: odzyskiwanie ---
-document.getElementById("recoverPhraseBtn").addEventListener("click", async () => {
-    const errorEl = document.getElementById("phraseRecoverError");
-    errorEl.style.display = "none";
-    const raw = document.getElementById("phraseRecoverInput").value.trim();
-    const words = raw.split(/\s+/).filter(Boolean);
-
-    if (words.length !== 12) {
-        errorEl.textContent = `Potrzeba dokładnie 12 słów, wpisano: ${words.length}`;
-        errorEl.style.display = "block";
-        return;
-    }
-    try {
-        const { publicKeyPem, privateKeyPem } = await deriveKeyPairFromSeedPhrase(words);
-        const bundleText = publicKeyPem + "\n" + privateKeyPem;
-        document.querySelector('[data-tab="manage"]').click();
-        await loadWalletFromBundleText(bundleText);
-    } catch (err) {
-        errorEl.textContent = err.message;
-        errorEl.style.display = "block";
-    }
-});
-
 // Przy starcie - jeśli jest zapamiętany portfel, pokaż odblokowanie zamiast wklejania
 if (hasRememberedWallet()) {
     document.getElementById("unlockCard").style.display = "block";
@@ -431,13 +403,35 @@ document.getElementById("rememberBtn").addEventListener("click", async () => {
     document.getElementById("rememberPassword").value = "";
 });
 
+function looksLikeSeedPhrase(text) {
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    return words.length === 12 && !text.includes("BEGIN");
+}
+
 document.getElementById("loadWalletBtn").addEventListener("click", async () => {
-    const ok = await loadWalletFromBundleText(document.getElementById("importBundle").value).catch((err) => {
-        const errorEl = document.getElementById("importError");
-        errorEl.textContent = t("wallet_load_error") + err.message;
-        errorEl.style.display = "block";
-        return false;
-    });
+    const errorEl = document.getElementById("importError");
+    errorEl.style.display = "none";
+    const raw = document.getElementById("importBundle").value;
+
+    let ok;
+    if (looksLikeSeedPhrase(raw)) {
+        const words = raw.trim().split(/\s+/).filter(Boolean);
+        try {
+            const { publicKeyPem, privateKeyPem } = await deriveKeyPairFromSeedPhrase(words);
+            ok = await loadWalletFromBundleText(publicKeyPem + "\n" + privateKeyPem);
+        } catch (err) {
+            errorEl.textContent = err.message;
+            errorEl.style.display = "block";
+            ok = false;
+        }
+    } else {
+        ok = await loadWalletFromBundleText(raw).catch((err) => {
+            errorEl.textContent = t("wallet_load_error") + err.message;
+            errorEl.style.display = "block";
+            return false;
+        });
+    }
+
     if (ok && !hasRememberedWallet()) {
         document.getElementById("rememberCard").style.display = "block";
     }
