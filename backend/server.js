@@ -5,6 +5,7 @@ const Blockchain = require("./bbcblockchain");
 const Mempool = require("./mempool");
 const Pool = require("./pool");
 const P2P = require("./p2p");
+const SoloTracker = require("./solo-tracker");
 const { rateLimiter, strictLimiter } = require("./rate-limit");
 const { difficultyToTargetHex } = require("./bbcblockchain");
 
@@ -17,6 +18,7 @@ const blockchain = new Blockchain();
 const mempool = new Mempool(blockchain, blockchain.storage);
 const pool = new Pool(blockchain, mempool, CONFIG.POOL_ADDRESS, CONFIG.POOL_FEE, CONFIG.SHARE_DIFFICULTY);
 const p2p = new P2P(blockchain, CONFIG.P2P_PORT, CONFIG.PEERS);
+const soloTracker = new SoloTracker();
 
 app.get("/info", (req, res) => res.json(blockchain.getInfo()));
 
@@ -45,7 +47,19 @@ app.post("/transactions/send", strictLimiter, (req, res) => {
     res.json(result);
 });
 
-app.get("/pool/status", (req, res) => res.json(pool.getStatus()));
+// Status puli + górnicy aktywni "na żywo" - łączy dane z puli (shares) i solo
+// (heartbeaty) w jedną listę, oznaczoną polem source, żeby front mógł pokazać
+// jeden wspólny widok "kto teraz kopie" niezależnie od trybu.
+app.get("/pool/status", (req, res) => {
+    const status = pool.getStatus();
+    const poolMiners = status.activeMiners.map((m) => ({ ...m, source: "pool" }));
+    const soloMiners = soloTracker.getActiveMiners().map((m) => ({ ...m, source: "solo" }));
+    res.json({
+        ...status,
+        activeMiners: [...poolMiners, ...soloMiners],
+        soloHashrate: soloTracker.getTotalHashrate()
+    });
+});
 
 app.get("/network/miners", (req, res) => {
     const poolMiners = blockchain.storage.getKnownPoolMiners().map((m) => ({
@@ -95,6 +109,15 @@ app.post("/solo/submit", strictLimiter, (req, res) => {
     mempool.pruneConfirmed(result.block);
     p2p.broadcastNewBlock(result.block);
     res.json({ status: "mined", blockHeight: result.block.height, hash: result.block.hash, reward: result.block.transactions[0].amount });
+});
+
+// Lekki "sygnał życia" od solo-minera - nie zgłasza wyniku, tylko tempo,
+// żeby serwer wiedział że ktoś aktualnie liczy solo (patrz solo-tracker.js).
+app.post("/solo/heartbeat", (req, res) => {
+    const { minerAddress, attempts, intervalSeconds } = req.body || {};
+    if (!minerAddress) return res.status(400).json({ error: "Brak adresu" });
+    soloTracker.heartbeat(minerAddress, attempts, intervalSeconds);
+    res.json({ ok: true });
 });
 
 // Stare solo mining wyłączone - przy realnej trudności blokowało cały serwer
