@@ -31,12 +31,19 @@
 
 <div class="page">
     <h1 style="margin-top:32px;">Peery P2P</h1>
+    <p>Ta strona jest wspólna — Ty i każdy, kto ją otworzy, widzicie dokładnie ten sam, jeden węzeł (Twój serwer).</p>
 
-    <div class="grid cols-2">
+    <div class="card">
+        <h3>Twój adres do podania innym</h3>
+        <div class="addr-display" id="my-p2p-address" style="cursor:pointer;" title="Dotknij, żeby skopiować">ładowanie…</div>
+        <p class="hint" style="margin-top:6px;">Ten ciąg podaje Ci znajomy, żebyś Ty go wpisał u siebie — i odwrotnie, Ty podajesz mu ten sam ciąg.</p>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:20px;">
         <div class="card">
             <h3>Połącz z nowym peerem</h3>
             <div class="field">
-                <label for="peer-address">Adres (host:port)</label>
+                <label for="peer-address">Adres znajomego (host:port)</label>
                 <input id="peer-address" placeholder="203.0.113.10:6001">
             </div>
             <button class="btn" id="connect-btn">Połącz</button>
@@ -49,9 +56,18 @@
     </div>
 
     <div class="grid cols-3" style="margin-top:20px;">
-        <div class="card"><h3>Połączeni</h3><ul id="list-connected" class="mono" style="padding-left:18px; margin:0;"></ul></div>
-        <div class="card"><h3>Skonfigurowani</h3><ul id="list-configured" class="mono" style="padding-left:18px; margin:0;"></ul></div>
-        <div class="card"><h3>Łączą się ponownie</h3><ul id="list-reconnecting" class="mono" style="padding-left:18px; margin:0;"></ul></div>
+        <div class="card">
+            <h3>Połączeni <span style="font-weight:400;font-size:.75rem;color:var(--text-dim);">— aktywnie gadają teraz</span></h3>
+            <ul id="list-connected" class="mono" style="padding-left:18px; margin:0;"></ul>
+        </div>
+        <div class="card">
+            <h3>Skonfigurowani <span style="font-weight:400;font-size:.75rem;color:var(--text-dim);">— znane, niekoniecznie połączone teraz</span></h3>
+            <ul id="list-configured" class="mono" style="padding-left:18px; margin:0;"></ul>
+        </div>
+        <div class="card">
+            <h3>Łączą się ponownie <span style="font-weight:400;font-size:.75rem;color:var(--text-dim);">— stracone, próbuje wrócić</span></h3>
+            <ul id="list-reconnecting" class="mono" style="padding-left:18px; margin:0;"></ul>
+        </div>
     </div>
 </div>
 
@@ -62,36 +78,89 @@
 <script>
 setActiveNav("nav-peers");
 
+const KNOWN_HOST = "141.147.98.57"; // Twój obecny publiczny adres
+
 function fillList(id, items) {
     const el = document.getElementById(id);
     el.innerHTML = items.length ? items.map(p => `<li>${escapeHtml(p)}</li>`).join("") : '<li style="color:var(--text-dim); list-style:none; margin-left:-18px;">— brak —</li>';
 }
 
+// Czyści wklejony adres z typowych pomyłek: http://, https://, końcowy slash, spacje
+function normalizePeerAddress(raw) {
+    return raw.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+}
+function looksLikeHostPort(addr) {
+    return /^[a-zA-Z0-9.\-]+:\d{1,5}$/.test(addr);
+}
+
+let lastKnownPort = null;
+
 async function load() {
     try {
         const p = await apiGet("/peers");
+        lastKnownPort = p.port;
+        document.getElementById("my-p2p-address").textContent = `${KNOWN_HOST}:${p.port}`;
         document.getElementById("peers-summary").innerHTML = `
             <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Port P2P</span><span class="mono">${p.port}</span></div>
             <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Połączeni peerzy</span><span class="mono">${p.connected.length}</span></div>`;
         fillList("list-connected", p.connected);
         fillList("list-configured", p.configured);
         fillList("list-reconnecting", p.reconnecting);
+        return p;
     } catch (e) {
         document.getElementById("peers-summary").innerHTML = `<div class="error-banner">${escapeHtml(e.message)}</div>`;
+        document.getElementById("my-p2p-address").textContent = "niedostępne";
+        return null;
     }
 }
 
+document.getElementById("my-p2p-address").addEventListener("click", async () => {
+    const el = document.getElementById("my-p2p-address");
+    try {
+        await navigator.clipboard.writeText(el.textContent);
+        const original = el.textContent;
+        el.textContent = "Skopiowano ✓";
+        setTimeout(() => { el.textContent = original; }, 1200);
+    } catch (e) { /* schowek niedostępny - po prostu nic nie rób */ }
+});
+
 document.getElementById("connect-btn").addEventListener("click", async () => {
-    const addr = document.getElementById("peer-address").value.trim();
+    const raw = document.getElementById("peer-address").value;
+    const addr = normalizePeerAddress(raw);
     const box = document.getElementById("connect-result");
-    if (!addr) { box.innerHTML = '<div class="error-banner">Podaj adres w formacie host:port</div>'; return; }
+    const btn = document.getElementById("connect-btn");
+
+    if (!addr) { box.innerHTML = '<div class="error-banner">Podaj adres znajomego.</div>'; return; }
+    if (!looksLikeHostPort(addr)) {
+        box.innerHTML = `<div class="error-banner">To nie wygląda jak "host:port" (np. 203.0.113.10:6001). Sprawdź, czy nie brakuje numeru portu po dwukropku.</div>`;
+        return;
+    }
+
+    btn.disabled = true;
+    box.innerHTML = `<p style="color:var(--text-dim);">Łączę z ${escapeHtml(addr)}...</p>`;
+
     try {
         await apiPost("/peers/connect", { address: addr });
-        box.innerHTML = `<p style="color:var(--leaf)">Łączenie z ${escapeHtml(addr)} zainicjowane.</p>`;
-        setTimeout(load, 1000);
     } catch (e) {
-        box.innerHTML = `<div class="error-banner">${escapeHtml(e.message)}</div>`;
+        box.innerHTML = `<div class="error-banner">Serwer odrzucił próbę: ${escapeHtml(e.message)}</div>`;
+        btn.disabled = false;
+        return;
     }
+
+    // Sprawdzam do 8 sekund, czy peer faktycznie pojawił się jako połączony
+    let confirmed = false;
+    for (let i = 0; i < 4; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const p = await load();
+        if (p && p.connected.some((c) => c === addr || c.startsWith(addr))) { confirmed = true; break; }
+    }
+
+    if (confirmed) {
+        box.innerHTML = `<p style="color:var(--leaf);">✅ Połączono z ${escapeHtml(addr)} — widoczny na liście "Połączeni".</p>`;
+    } else {
+        box.innerHTML = `<div class="error-banner">⚠️ Zgłoszono, ale po 8s nie widać go jako połączonego. Najczęstsza przyczyna: port ${escapeHtml(addr.split(":")[1] || "?")} nie jest otwarty po jego stronie — niech sprawdzi na canyouseeme.org.</div>`;
+    }
+    btn.disabled = false;
 });
 
 load();
