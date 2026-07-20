@@ -117,7 +117,8 @@ async function refreshPoolStatus() {
                 Trudność share / bloku: ${fmtNumber(status.shareDifficulty)} / ${fmtNumber(status.blockDifficulty)}<br>
                 Shares w tej rundzie: ${status.totalSharesThisRound}<br>
                 Opłata puli: ${(status.poolFee * 100).toFixed(0)}%<br>
-                Szacowany hashrate puli: <strong style="color:var(--leaf);">${formatHashrate(status.estimatedHashrate)}</strong>
+                Hashrate puli: <strong style="color:var(--leaf);">${formatHashrate(status.estimatedHashrate)}</strong><br>
+                Hashrate solo: <strong style="color:var(--flame);">${formatHashrate(status.soloHashrate)}</strong>
             </div>`;
 
         minersEl.classList.remove("skeleton");
@@ -126,14 +127,19 @@ async function refreshPoolStatus() {
         if (!status.activeMiners || status.activeMiners.length === 0) {
             minersEl.innerHTML = `<div style="color:var(--text-dim);font-size:.88rem;">Brak aktywnych górników w ostatnich ${windowMin} min.</div>`;
         } else {
-            const rows = status.activeMiners.map((m) => `
+            const rows = status.activeMiners.map((m) => {
+                const sourceLabel = m.source === "solo" ? "Solo" : "Pula";
+                const activity = m.source === "solo" ? `~${formatHashrate(m.hashrate)}` : `${m.shares} shares`;
+                return `
                 <tr>
                     <td class="mono">${fmtAddress(m.minerAddress)}</td>
-                    <td class="num" style="text-align:right;">${m.shares}</td>
-                </tr>`).join("");
+                    <td>${sourceLabel}</td>
+                    <td class="num" style="text-align:right;">${activity}</td>
+                </tr>`;
+            }).join("");
             minersEl.innerHTML = `
                 <table>
-                    <thead><tr><th>Adres</th><th style="text-align:right;">Shares (${windowMin} min)</th></tr></thead>
+                    <thead><tr><th>Adres</th><th>Tryb</th><th style="text-align:right;">Aktywność (${windowMin} min)</th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table>`;
         }
