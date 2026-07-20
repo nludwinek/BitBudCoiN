@@ -41,6 +41,11 @@
   </div>
 
   <div class="card">
+    <h3>Aktywni górnicy <span style="font-weight:400;color:var(--text-dim);font-size:.75rem;text-transform:none;letter-spacing:0;">(ostatnie kilka minut)</span></h3>
+    <div id="activeMinersList" class="skeleton" style="height:60px;"></div>
+  </div>
+
+  <div class="card">
     <h3 data-i18n="miner_auto_title">Kopanie automatyczne (w tej przeglądarce)</h3>
     <p data-i18n="miner_auto_desc">Liczy hashe tutaj, na Twoim urządzeniu, i samo zgłasza znalezione shares — bez klikania czegokolwiek co chwilę.</p>
     <div class="field">
@@ -84,27 +89,63 @@
 <script src="assets/browser-miner.js"></script>
 <script src="assets/solo-miner.js"></script>
 <script src="assets/i18n.js"></script>
-<script src="assets/nav-responsive.js"></script>
+<script src="assets/native-responsive.js"></script>
 <script>
 mountSmokeField();
 mountNavStatus();
 setActiveNav();
 
-// --- Status puli ---
-(async () => {
+// --- Status puli + aktywni górnicy: na żywo, odświeżane co 8 sekund ---
+function formatHashrate(h) {
+    if (!h || h <= 0) return "0 H/s";
+    if (h >= 1e6) return (h / 1e6).toFixed(2) + " MH/s";
+    if (h >= 1e3) return (h / 1e3).toFixed(2) + " kH/s";
+    return Math.round(h) + " H/s";
+}
+
+async function refreshPoolStatus() {
+    const poolStatusEl = document.getElementById("poolStatus");
+    const minersEl = document.getElementById("activeMinersList");
     try {
         const status = await apiGet("/pool/status");
-        document.getElementById("poolStatus").outerHTML = `
+
+        poolStatusEl.classList.remove("skeleton");
+        poolStatusEl.style.height = "";
+        poolStatusEl.innerHTML = `
             <div style="font-family:var(--font-mono);font-size:.9rem;line-height:1.8;">
                 Pracuje nad blokiem <strong>#${status.workingOnHeight}</strong><br>
                 Trudność share / bloku: ${fmtNumber(status.shareDifficulty)} / ${fmtNumber(status.blockDifficulty)}<br>
                 Shares w tej rundzie: ${status.totalSharesThisRound}<br>
-                Opłata puli: ${(status.poolFee * 100).toFixed(0)}%
+                Opłata puli: ${(status.poolFee * 100).toFixed(0)}%<br>
+                Szacowany hashrate puli: <strong style="color:var(--leaf);">${formatHashrate(status.estimatedHashrate)}</strong>
             </div>`;
+
+        minersEl.classList.remove("skeleton");
+        minersEl.style.height = "";
+        const windowMin = Math.max(1, Math.round((status.activeMinersWindowSeconds || 300) / 60));
+        if (!status.activeMiners || status.activeMiners.length === 0) {
+            minersEl.innerHTML = `<div style="color:var(--text-dim);font-size:.88rem;">Brak aktywnych górników w ostatnich ${windowMin} min.</div>`;
+        } else {
+            const rows = status.activeMiners.map((m) => `
+                <tr>
+                    <td class="mono">${fmtAddress(m.minerAddress)}</td>
+                    <td class="num" style="text-align:right;">${m.shares}</td>
+                </tr>`).join("");
+            minersEl.innerHTML = `
+                <table>
+                    <thead><tr><th>Adres</th><th style="text-align:right;">Shares (${windowMin} min)</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+        }
     } catch (e) {
-        document.getElementById("poolStatus").outerHTML = `<div class="error-banner">Pula niedostępna: ${e.message}</div>`;
+        poolStatusEl.classList.remove("skeleton");
+        poolStatusEl.innerHTML = `<div class="error-banner">Pula niedostępna: ${e.message}</div>`;
+        minersEl.classList.remove("skeleton");
+        minersEl.innerHTML = "";
     }
-})();
+}
+refreshPoolStatus();
+setInterval(refreshPoolStatus, 8000);
 
 // --- Benchmark realnej prędkości urządzenia ---
 async function benchmarkDevice(durationMs) {
