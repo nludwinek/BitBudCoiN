@@ -9,6 +9,37 @@ const SoloMiner = (() => {
     let onUpdate = () => {};
     let onLog = () => {};
 
+    // Solo nie wysyła "shares" jak pula - serwer inaczej nie wie, że ktoś w danej
+    // chwili kopie. Heartbeat co ~15s, poza właściwym liczeniem hashy, bez
+    // wpływu na tempo - nie blokujący (fire and forget) i nie krytyczny (brak
+    // połączenia po prostu pomija ten heartbeat, kopanie leci dalej).
+    const HEARTBEAT_INTERVAL_MS = 15000;
+    let lastHeartbeatTime = null;
+    let attemptsAtLastHeartbeat = 0;
+
+    function maybeSendHeartbeat(minerAddress, apiBase) {
+        const now = Date.now();
+        if (lastHeartbeatTime === null) {
+            lastHeartbeatTime = now;
+            attemptsAtLastHeartbeat = sessionStats.attempts;
+            return;
+        }
+        if (now - lastHeartbeatTime < HEARTBEAT_INTERVAL_MS) return;
+
+        const intervalSeconds = (now - lastHeartbeatTime) / 1000;
+        const attemptsSinceLast = sessionStats.attempts - attemptsAtLastHeartbeat;
+        lastHeartbeatTime = now;
+        attemptsAtLastHeartbeat = sessionStats.attempts;
+
+        fetch(`${apiBase}/solo/heartbeat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ minerAddress, attempts: attemptsSinceLast, intervalSeconds })
+        }).catch(() => {
+            // heartbeat to tylko informacja o aktywności - brak połączenia nie powinien przerywać kopania
+        });
+    }
+
     async function computeBlockHash({ height, previousHash, timestamp, transactions, difficulty, nonce }) {
         const str = height + previousHash + timestamp + JSON.stringify(transactions) + difficulty + nonce;
         const bytes = new TextEncoder().encode(str);
@@ -16,7 +47,7 @@ const SoloMiner = (() => {
         return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
     }
 
-    async function mineOneBlock(work) {
+    async function mineOneBlock(work, minerAddress, apiBase) {
         const candidate = {
             height: work.height, previousHash: work.previousHash, timestamp: work.timestamp,
             transactions: work.transactions, difficulty: work.difficulty, nonce: 0
@@ -28,6 +59,7 @@ const SoloMiner = (() => {
             candidate.nonce++;
             sessionStats.attempts++;
             if (candidate.nonce % 300 === 0) onUpdate(sessionStats);
+            if (candidate.nonce % 300 === 0) maybeSendHeartbeat(minerAddress, apiBase);
             if (candidate.nonce % 500 === 0) await new Promise((r) => setTimeout(r, 0));
             hash = await computeBlockHash(candidate);
         }
@@ -46,7 +78,7 @@ const SoloMiner = (() => {
                 continue;
             }
 
-            const candidate = await mineOneBlock(work);
+            const candidate = await mineOneBlock(work, minerAddress, apiBase);
             if (!mining || !candidate) break;
 
             try {
@@ -74,6 +106,8 @@ const SoloMiner = (() => {
             if (mining) return;
             mining = true;
             sessionStats = { attempts: 0, blocksFound: 0 };
+            lastHeartbeatTime = null;
+            attemptsAtLastHeartbeat = 0;
             onUpdate = callbacks.onUpdate || (() => {});
             onLog = callbacks.onLog || (() => {});
             loop(minerAddress, apiBase);
