@@ -1,5 +1,12 @@
 // Responsywne menu - na wąskich ekranach (telefon) chowa listę stron pod
 // przycisk ☰, na szerokich (komputer) pokazuje wszystko normalnie, jak dotąd.
+//
+// Dodatkowo: sprawdzamy nie tylko CSS viewport (window.innerWidth), ale też
+// realną szerokość fizycznego ekranu (window.screen.width). "Wersja na
+// komputery" w przeglądarce potrafi oszukać viewport, żeby strona myślała,
+// że jest szeroka - ale nie zmienia screen.width, bo to twardy parametr
+// sprzętu. Dzięki temu telefon dostaje hamburger niezależnie od tego
+// ustawienia przeglądarki.
 function mountResponsiveNav() {
     const nav = document.querySelector(".nav");
     const links = document.querySelector(".nav-links");
@@ -19,6 +26,10 @@ function mountResponsiveNav() {
         a.addEventListener("click", () => links.classList.remove("open"));
     });
 
+    if (window.screen && window.screen.width <= 680) {
+        nav.classList.add("force-mobile-nav");
+    }
+
     if (!document.getElementById("responsive-nav-style")) {
         const style = document.createElement("style");
         style.id = "responsive-nav-style";
@@ -35,6 +46,15 @@ function mountResponsiveNav() {
                 .nav { flex-wrap:wrap; }
                 .lang-switcher { order:2; margin-left:auto !important; }
             }
+            .nav.force-mobile-nav { flex-wrap:wrap; }
+            .nav.force-mobile-nav .nav-toggle { display:block; order:1; }
+            .nav.force-mobile-nav .nav-links { display:none; flex-direction:column; width:100%; order:3;
+                background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm);
+                padding:8px; margin-top:10px; position:absolute; top:100%; left:0; right:0; }
+            .nav.force-mobile-nav .nav-links.open { display:flex; }
+            .nav.force-mobile-nav .nav-links a { padding:12px 10px; border-bottom:1px solid var(--border); }
+            .nav.force-mobile-nav .nav-links a:last-child { border-bottom:none; }
+            .nav.force-mobile-nav .lang-switcher { order:2; margin-left:auto !important; }
         `;
         document.head.appendChild(style);
     }
