@@ -245,6 +245,8 @@ input, select, textarea {
   width: 100%;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--flame); }
+label { display: block; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 6px; }
+.field { margin-bottom: 16px; }
 
 /* --- Tabele (bloki, transakcje, peery) --- */
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
