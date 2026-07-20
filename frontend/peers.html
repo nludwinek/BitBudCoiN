@@ -1,101 +1,493 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Peery — BitBudCoin</title>
-<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/theme.css">
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Peery — BitBudCoin</title>
+
+    <link
+        rel="icon"
+        href="assets/logo.svg"
+        type="image/svg+xml"
+    >
+
+    <link
+        rel="preconnect"
+        href="https://fonts.googleapis.com"
+    >
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+        rel="stylesheet"
+    >
+
+    <link
+        rel="stylesheet"
+        href="assets/theme.css"
+    >
 </head>
+
 <body>
 
-<nav class="nav">
-    <a href="index.html" class="brand"><img src="assets/logo.svg" alt="BitBudCoin"> BitBudCoin</a>
-    <div class="nav-links">
-        <a href="index.html" id="nav-index">Start</a>
-        <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
-        <a href="explorer.html" id="nav-explorer">Explorer</a>
-        <a href="miner.html" id="nav-miner">Miner</a>
-        <a href="network.html" id="nav-network">Sieć</a>
-        <a href="peers.html" id="nav-peers">Peery</a>
-        <a href="exchange.html" id="nav-exchange">Giełda</a>
-        <a href="address.html" id="nav-address">Adres</a>
-        <a href="docks.html" id="nav-docks">Docs</a>
-    </div>
-    <div class="nav-status">
-        <span class="flame-pill" id="nav-status"><span class="flame-dot"></span><span id="nav-status-text">łączę…</span></span>
-    </div>
-</nav>
+    <nav class="nav">
+        <a
+            href="index.html"
+            class="brand"
+        >
+            <img
+                src="assets/logo.svg"
+                alt="BitBudCoin"
+            >
+            BitBudCoin
+        </a>
 
-<div class="page">
-    <h1 style="margin-top:32px;">Peery P2P</h1>
+        <div class="nav-links">
+            <a href="index.html" id="nav-index">Start</a>
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="explorer.html" id="nav-explorer">Explorer</a>
+            <a href="miner.html" id="nav-miner">Miner</a>
+            <a href="network.html" id="nav-network">Sieć</a>
+            <a href="peers.html" id="nav-peers">Peery</a>
+            <a href="exchange.html" id="nav-exchange">Giełda</a>
+            <a href="address.html" id="nav-address">Adres</a>
+            <a href="docks.html" id="nav-docks">Docs</a>
+        </div>
 
-    <div class="grid cols-2">
+        <div class="nav-status">
+            <span
+                class="flame-pill"
+                id="nav-status"
+            >
+                <span class="flame-dot"></span>
+                <span id="nav-status-text">łączę…</span>
+            </span>
+        </div>
+    </nav>
+
+    <div class="page">
+        <h1 style="margin-top: 32px;">
+            Peery P2P
+        </h1>
+
+        <p>
+            Ta strona jest wspólna — Ty i każdy, kto ją otworzy,
+            widzicie dokładnie ten sam, jeden węzeł (Twój serwer).
+        </p>
+
         <div class="card">
-            <h3>Połącz z nowym peerem</h3>
-            <div class="field">
-                <label for="peer-address">Adres (host:port)</label>
-                <input id="peer-address" placeholder="203.0.113.10:6001">
+            <h3>Twój adres do podania innym</h3>
+
+            <div
+                class="addr-display"
+                id="my-p2p-address"
+                style="cursor: pointer;"
+                title="Dotknij, żeby skopiować"
+            >
+                ładowanie…
             </div>
-            <button class="btn" id="connect-btn">Połącz</button>
-            <div id="connect-result" style="margin-top:12px;"></div>
+
+            <p
+                class="hint"
+                style="margin-top: 6px;"
+            >
+                Ten ciąg podaje Ci znajomy, żebyś Ty go wpisał
+                u siebie — i odwrotnie, Ty podajesz mu ten sam ciąg.
+            </p>
         </div>
-        <div class="card">
-            <h3>Status węzła</h3>
-            <div id="peers-summary"><p class="skeleton">ładowanie ładowanie</p></div>
+
+        <div
+            class="grid cols-2"
+            style="margin-top: 20px;"
+        >
+            <div class="card">
+                <h3>Połącz z nowym peerem</h3>
+
+                <div class="field">
+                    <label for="peer-address">
+                        Adres znajomego (host:port)
+                    </label>
+
+                    <input
+                        id="peer-address"
+                        placeholder="203.0.113.10:6001"
+                    >
+                </div>
+
+                <button
+                    class="btn"
+                    id="connect-btn"
+                >
+                    Połącz
+                </button>
+
+                <div
+                    id="connect-result"
+                    style="margin-top: 12px;"
+                ></div>
+            </div>
+
+            <div class="card">
+                <h3>Status węzła</h3>
+
+                <div id="peers-summary">
+                    <p class="skeleton">
+                        ładowanie ładowanie
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div
+            class="grid cols-3"
+            style="margin-top: 20px;"
+        >
+            <div class="card">
+                <h3>
+                    Połączeni
+
+                    <span
+                        style="
+                            font-weight: 400;
+                            font-size: 0.75rem;
+                            color: var(--text-dim);
+                        "
+                    >
+                        — aktywnie gadają teraz
+                    </span>
+                </h3>
+
+                <ul
+                    id="list-connected"
+                    class="mono"
+                    style="padding-left: 18px; margin: 0;"
+                ></ul>
+            </div>
+
+            <div class="card">
+                <h3>
+                    Skonfigurowani
+
+                    <span
+                        style="
+                            font-weight: 400;
+                            font-size: 0.75rem;
+                            color: var(--text-dim);
+                        "
+                    >
+                        — znane, niekoniecznie połączone teraz
+                    </span>
+                </h3>
+
+                <ul
+                    id="list-configured"
+                    class="mono"
+                    style="padding-left: 18px; margin: 0;"
+                ></ul>
+            </div>
+
+            <div class="card">
+                <h3>
+                    Łączą się ponownie
+
+                    <span
+                        style="
+                            font-weight: 400;
+                            font-size: 0.75rem;
+                            color: var(--text-dim);
+                        "
+                    >
+                        — stracone, próbuje wrócić
+                    </span>
+                </h3>
+
+                <ul
+                    id="list-reconnecting"
+                    class="mono"
+                    style="padding-left: 18px; margin: 0;"
+                ></ul>
+            </div>
         </div>
     </div>
 
-    <div class="grid cols-3" style="margin-top:20px;">
-        <div class="card"><h3>Połączeni</h3><ul id="list-connected" class="mono" style="padding-left:18px; margin:0;"></ul></div>
-        <div class="card"><h3>Skonfigurowani</h3><ul id="list-configured" class="mono" style="padding-left:18px; margin:0;"></ul></div>
-        <div class="card"><h3>Łączą się ponownie</h3><ul id="list-reconnecting" class="mono" style="padding-left:18px; margin:0;"></ul></div>
-    </div>
-</div>
+    <footer>
+        BitBudCoin (BbC) · sieć proof-of-work ·
+        <a href="docks.html">dokumentacja</a>
+    </footer>
 
-<footer>BitBudCoin (BbC) · sieć proof-of-work · <a href="docks.html">dokumentacja</a></footer>
+    <script src="assets/api.js"></script>
+    <script src="assets/nav.js"></script>
 
-<script src="assets/api.js"></script>
-<script src="assets/nav.js"></script>
-<script>
-setActiveNav("nav-peers");
+    <script>
+        setActiveNav("nav-peers");
 
-function fillList(id, items) {
-    const el = document.getElementById(id);
-    el.innerHTML = items.length ? items.map(p => `<li>${escapeHtml(p)}</li>`).join("") : '<li style="color:var(--text-dim); list-style:none; margin-left:-18px;">— brak —</li>';
-}
+        const KNOWN_HOST = "141.147.98.57";
 
-async function load() {
-    try {
-        const p = await apiGet("/peers");
-        document.getElementById("peers-summary").innerHTML = `
-            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Port P2P</span><span class="mono">${p.port}</span></div>
-            <div style="display:flex; justify-content:space-between; padding:6px 0;"><span style="color:var(--text-dim)">Połączeni peerzy</span><span class="mono">${p.connected.length}</span></div>`;
-        fillList("list-connected", p.connected);
-        fillList("list-configured", p.configured);
-        fillList("list-reconnecting", p.reconnecting);
-    } catch (e) {
-        document.getElementById("peers-summary").innerHTML = `<div class="error-banner">${escapeHtml(e.message)}</div>`;
-    }
-}
+        function fillList(id, items) {
+            const element = document.getElementById(id);
 
-document.getElementById("connect-btn").addEventListener("click", async () => {
-    const addr = document.getElementById("peer-address").value.trim();
-    const box = document.getElementById("connect-result");
-    if (!addr) { box.innerHTML = '<div class="error-banner">Podaj adres w formacie host:port</div>'; return; }
-    try {
-        await apiPost("/peers/connect", { address: addr });
-        box.innerHTML = `<p style="color:var(--leaf)">Łączenie z ${escapeHtml(addr)} zainicjowane.</p>`;
-        setTimeout(load, 1000);
-    } catch (e) {
-        box.innerHTML = `<div class="error-banner">${escapeHtml(e.message)}</div>`;
-    }
-});
+            element.innerHTML = items.length
+                ? items
+                    .map((peer) => `<li>${escapeHtml(peer)}</li>`)
+                    .join("")
+                : `
+                    <li
+                        style="
+                            color: var(--text-dim);
+                            list-style: none;
+                            margin-left: -18px;
+                        "
+                    >
+                        — brak —
+                    </li>
+                `;
+        }
 
-load();
-setInterval(load, 10000);
-</script>
+        function normalizePeerAddress(raw) {
+            return raw
+                .trim()
+                .replace(/^https?:\/\//i, "")
+                .replace(/\/+$/, "");
+        }
+
+        function looksLikeHostPort(address) {
+            return /^[a-zA-Z0-9.\-]+:\d{1,5}$/.test(address);
+        }
+
+        async function load() {
+            try {
+                const peers = await apiGet("/peers");
+
+                document.getElementById(
+                    "my-p2p-address"
+                ).textContent = `${KNOWN_HOST}:${peers.port}`;
+
+                document.getElementById(
+                    "peers-summary"
+                ).innerHTML = `
+                    <div
+                        style="
+                            display: flex;
+                            justify-content: space-between;
+                            padding: 6px 0;
+                        "
+                    >
+                        <span style="color: var(--text-dim);">
+                            Port P2P
+                        </span>
+
+                        <span class="mono">
+                            ${peers.port}
+                        </span>
+                    </div>
+
+                    <div
+                        style="
+                            display: flex;
+                            justify-content: space-between;
+                            padding: 6px 0;
+                        "
+                    >
+                        <span style="color: var(--text-dim);">
+                            Połączeni peerzy
+                        </span>
+
+                        <span class="mono">
+                            ${peers.connected.length}
+                        </span>
+                    </div>
+                `;
+
+                fillList(
+                    "list-connected",
+                    peers.connected || []
+                );
+
+                fillList(
+                    "list-configured",
+                    peers.configured || []
+                );
+
+                fillList(
+                    "list-reconnecting",
+                    peers.reconnecting || []
+                );
+
+                return peers;
+            } catch (error) {
+                document.getElementById(
+                    "peers-summary"
+                ).innerHTML = `
+                    <div class="error-banner">
+                        ${escapeHtml(error.message)}
+                    </div>
+                `;
+
+                document.getElementById(
+                    "my-p2p-address"
+                ).textContent = "niedostępne";
+
+                return null;
+            }
+        }
+
+        document.getElementById(
+            "my-p2p-address"
+        ).addEventListener("click", async () => {
+            const element = document.getElementById(
+                "my-p2p-address"
+            );
+
+            try {
+                await navigator.clipboard.writeText(
+                    element.textContent
+                );
+
+                const originalText = element.textContent;
+
+                element.textContent = "Skopiowano ✓";
+
+                setTimeout(() => {
+                    element.textContent = originalText;
+                }, 1200);
+            } catch (error) {
+                console.warn(
+                    "Nie udało się skopiować adresu:",
+                    error
+                );
+            }
+        });
+
+        document.getElementById(
+            "connect-btn"
+        ).addEventListener("click", async () => {
+            const rawAddress = document.getElementById(
+                "peer-address"
+            ).value;
+
+            const address = normalizePeerAddress(
+                rawAddress
+            );
+
+            const resultBox = document.getElementById(
+                "connect-result"
+            );
+
+            const button = document.getElementById(
+                "connect-btn"
+            );
+
+            if (!address) {
+                resultBox.innerHTML = `
+                    <div class="error-banner">
+                        Podaj adres znajomego.
+                    </div>
+                `;
+
+                return;
+            }
+
+            if (!looksLikeHostPort(address)) {
+                resultBox.innerHTML = `
+                    <div class="error-banner">
+                        To nie wygląda jak „host:port”
+                        (np. 203.0.113.10:6001).
+
+                        Sprawdź, czy nie brakuje numeru portu
+                        po dwukropku.
+                    </div>
+                `;
+
+                return;
+            }
+
+            button.disabled = true;
+
+            resultBox.innerHTML = `
+                <p style="color: var(--text-dim);">
+                    Łączę z ${escapeHtml(address)}...
+                </p>
+            `;
+
+            try {
+                await apiPost(
+                    "/peers/connect",
+                    {
+                        address
+                    }
+                );
+            } catch (error) {
+                resultBox.innerHTML = `
+                    <div class="error-banner">
+                        Serwer odrzucił próbę:
+                        ${escapeHtml(error.message)}
+                    </div>
+                `;
+
+                button.disabled = false;
+
+                return;
+            }
+
+            let confirmed = false;
+
+            for (let attempt = 0; attempt < 4; attempt++) {
+                await new Promise((resolve) => {
+                    setTimeout(resolve, 2000);
+                });
+
+                const peers = await load();
+
+                if (
+                    peers &&
+                    peers.connected.some((peer) => {
+                        return (
+                            peer === address ||
+                            peer.startsWith(address)
+                        );
+                    })
+                ) {
+                    confirmed = true;
+                    break;
+                }
+            }
+
+            if (confirmed) {
+                resultBox.innerHTML = `
+                    <p style="color: var(--leaf);">
+                        ✅ Połączono z ${escapeHtml(address)}
+                        — widoczny na liście „Połączeni”.
+                    </p>
+                `;
+            } else {
+                const port = address.split(":")[1] || "?";
+
+                resultBox.innerHTML = `
+                    <div class="error-banner">
+                        ⚠️ Zgłoszono próbę połączenia,
+                        ale po 8 sekundach peer nie jest
+                        widoczny jako połączony.
+
+                        Najczęstsza przyczyna:
+                        port ${escapeHtml(port)}
+                        nie jest otwarty po jego stronie.
+                    </div>
+                `;
+            }
+
+            button.disabled = false;
+        });
+
+        load();
+
+        setInterval(
+            load,
+            10000
+        );
+    </script>
+
 </body>
 </html>
