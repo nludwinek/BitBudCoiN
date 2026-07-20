@@ -1,3 +1,9 @@
+// Podświetla aktywny link w menu głównym (wywoływane z poszczególnych stron)
+function setActiveNav(id) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add("active");
+}
+
 async function mountNavStatus() {
     // Dwa warianty spotykane na różnych stronach: pojedynczy element "navStatus"
     // (miner.html, wallet.html) albo rozdzielony "nav-status" + "nav-status-text"
