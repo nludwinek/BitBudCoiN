@@ -1,4 +1,3 @@
-cat > config.js << 'EOF'
 module.exports = {
     NETWORK_NAME: "BitBudCoin",
     SYMBOL: "BbC",
@@ -11,6 +10,7 @@ module.exports = {
         { to: "BbCcbcfc6f043ddb1f5ac83dd59feab439e192a1fb7", amount: 700 }
     ],
     BLOCK_TIME: 480,
+    TARGET_BLOCK_TIME_MS: 480000,
     BLOCK_REWARD: 50,
     DIFFICULTY: 7,
     DIFFICULTY_ADJUSTMENT: 2028,
@@ -21,9 +21,9 @@ module.exports = {
     DATABASE: process.env.DATABASE_PATH || "bbc.db",
     API_PORT: process.env.PORT || 5000,
     P2P_PORT: 6001,
-    PEERS: [],
+    PEERS: ["141.147.98.57:6001"],
+    TRUSTED_LEGACY_PEER: "141.147.98.57",
     MIN_FEE: 0.001,
     MAX_BLOCK_SIZE: 1000000,
     MAX_TRANSACTIONS_PER_BLOCK: 5000
 };
-EOF

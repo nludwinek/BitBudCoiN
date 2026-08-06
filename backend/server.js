@@ -8,10 +8,7 @@ const P2P = require("./p2p");
 const SoloTracker = require("./solo-tracker");
 const { rateLimiter, strictLimiter } = require("./rate-limit");
 const { difficultyToTargetHex } = require("./bbcblockchain");
-const bridgeTags = require("./bridge-tags");
 const swapOffers = require("./swap-offers");
-const { verifyAcceptOfferSignature, verifyRejectOfferSignature } = require("./swap-offer-auth");
-const { verifyHtlcCreateSignature, verifyHtlcClaimSignature, verifyHtlcRefundSignature } = require("./htlc-wallet");
 
 const app = express();
 app.use(cors());
@@ -21,7 +18,11 @@ app.use(rateLimiter);
 const blockchain = new Blockchain();
 const mempool = new Mempool(blockchain, blockchain.storage);
 const pool = new Pool(blockchain, { mempool, poolAddress: CONFIG.POOL_ADDRESS, poolFee: CONFIG.POOL_FEE, shareDifficulty: CONFIG.SHARE_DIFFICULTY });
-const p2p = new P2P(blockchain, CONFIG.P2P_PORT, CONFIG.PEERS);
+const p2p = new P2P(blockchain, {
+    port: CONFIG.P2P_PORT,
+    peers: CONFIG.PEERS,
+    mempool
+});
 p2p.start();
 const soloTracker = new SoloTracker();
 
@@ -95,38 +96,17 @@ app.get("/peers", (req, res) => {
     res.json(p2p.getStatus());
 });
 
-// BEZPIECZEŃSTWO (05.08.2026): brakowało autoryzacji - dowolny caller mógł
-// kazać węzłowi łączyć się z dowolnym adresem (SSRF-podobny wektor: skanowanie
-// wewnętrznej sieci Oracle Cloud, próby połączenia z localhost/metadanymi
-// chmury, itp.). Ten sam ADMIN_SECRET co /bridge/annotations - jedna spójna
-// bramka admina, nie druga, osobna.
+// Tymczasowo wyłączone: brak modułu bridge-tags.
 app.post("/peers/connect", strictLimiter, (req, res) => {
-    const { address, secret } = req.body || {};
-    if (secret !== bridgeTags.ADMIN_SECRET) {
-        return res.status(403).json({ error: "Zły sekret" });
-    }
-    if (!address || typeof address !== "string" || !address.includes(":")) {
-        return res.status(400).json({ error: "Nieprawidłowy adres - oczekiwano formatu host:port" });
-    }
-    p2p.connectToPeer(address);
-    res.json({ ok: true, message: `Próba połączenia z ${address} rozpoczęta` });
+    res.status(503).json({ error: "Funkcja tymczasowo wyłączona: brak bridge-tags" });
 });
 
 app.get("/bridge/annotations", (req, res) => {
-    res.json(bridgeTags.getAll());
+    res.status(503).json({ error: "Funkcja tymczasowo wyłączona: brak bridge-tags" });
 });
 
 app.post("/bridge/annotations", strictLimiter, (req, res) => {
-    const { secret, signature, blockHash, to, amount, chain, note } = req.body || {};
-    if (secret !== bridgeTags.ADMIN_SECRET) {
-        return res.status(403).json({ error: "Zły sekret" });
-    }
-    try {
-        const tag = bridgeTags.addTag({ signature, blockHash, to, amount, chain, note });
-        res.json({ ok: true, tag });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
+    res.status(503).json({ error: "Funkcja tymczasowo wyłączona: brak bridge-tags" });
 });
 
 app.get("/swap/offers", (req, res) => {
@@ -150,34 +130,11 @@ app.post("/swap/offers", strictLimiter, (req, res) => {
 });
 
 app.post("/swap/offers/:id/accept", strictLimiter, (req, res) => {
-    const offer = swapOffers.getOffer(req.params.id);
-    if (!offer) return res.status(404).json({ error: "Oferta nie znaleziona" });
-    if (!verifyAcceptOfferSignature(req.body, offer.targetSellerAddress)) {
-        return res.status(403).json({ error: "Nieprawidłowy podpis - tylko właściciel adresu docelowego może zaakceptować tę ofertę" });
-    }
-    try {
-        const updated = swapOffers.acceptOffer(req.params.id, {
-            sellerPubKeyHash: req.body.sellerPubKeyHash,
-            sellerBbcAddress: offer.targetSellerAddress
-        });
-        res.json({ ok: true, offer: updated });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
+    res.status(503).json({ error: "Funkcja tymczasowo wyłączona: brak swap-offer-auth" });
 });
 
 app.post("/swap/offers/:id/reject", strictLimiter, (req, res) => {
-    const offer = swapOffers.getOffer(req.params.id);
-    if (!offer) return res.status(404).json({ error: "Oferta nie znaleziona" });
-    if (!verifyRejectOfferSignature(req.body, offer.targetSellerAddress)) {
-        return res.status(403).json({ error: "Nieprawidłowy podpis - tylko właściciel adresu docelowego może odrzucić tę ofertę" });
-    }
-    try {
-        const updated = swapOffers.rejectOffer(req.params.id, offer.targetSellerAddress);
-        res.json({ ok: true, offer: updated });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
+    res.status(503).json({ error: "Funkcja tymczasowo wyłączona: brak swap-offer-auth" });
 });
 
 app.get("/transactions/address/:address", (req, res) => {
@@ -185,39 +142,7 @@ app.get("/transactions/address/:address", (req, res) => {
 });
 
 app.post("/htlc/submit", strictLimiter, (req, res) => {
-    const tx = req.body;
-    if (!tx || !tx.type) return res.status(400).json({ error: "Brak typu transakcji" });
-    if (tx.type === "HTLC_CREATE") {
-        // BEZPIECZEŃSTWO (05.08.2026): ten sam wzorzec co przy trudności -
-        // "available < tx.amount + fee" z NaN zawsze daje false (sprawdzenie
-        // przechodzi niezależnie od kwoty). Podpis potwierdza KTO wysłał, nie
-        // że dane mają sens - typ trzeba sprawdzić osobno, jawnie.
-        if (typeof tx.amount !== "number" || !(tx.amount > 0)) {
-            return res.status(400).json({ error: "Nieprawidłowa kwota" });
-        }
-        if (!verifyHtlcCreateSignature(tx)) return res.status(400).json({ error: "Nieprawidłowy podpis - transakcja odrzucona" });
-        if (blockchain.findHTLC(tx.htlcId)) return res.status(400).json({ error: "HTLC o tym ID już istnieje" });
-        const fee = typeof tx.fee === "number" ? tx.fee : 0;
-        const available = mempool.getPendingAwareBalance(tx.from);
-        if (available < tx.amount + fee) return res.status(400).json({ error: `Niewystarczające saldo (dostępne: ${available})` });
-        mempool.addHtlcTransaction(tx);
-        return res.json({ accepted: true });
-    }
-    if (tx.type === "HTLC_CLAIM") {
-        if (!verifyHtlcClaimSignature(tx)) return res.status(400).json({ error: "Nieprawidłowy podpis - transakcja odrzucona" });
-        const validation = blockchain.validateHTLCClaim({ htlcId: tx.htlcId, secret: tx.secret, claimant: tx.claimant });
-        if (!validation.valid) return res.status(400).json({ error: validation.reason });
-        mempool.addHtlcTransaction({ ...tx, amount: validation.amount, to: validation.to });
-        return res.json({ accepted: true });
-    }
-    if (tx.type === "HTLC_REFUND") {
-        if (!verifyHtlcRefundSignature(tx)) return res.status(400).json({ error: "Nieprawidłowy podpis - transakcja odrzucona" });
-        const validation = blockchain.validateHTLCRefund({ htlcId: tx.htlcId, refundee: tx.refundee });
-        if (!validation.valid) return res.status(400).json({ error: validation.reason });
-        mempool.addHtlcTransaction({ ...tx, amount: validation.amount, to: validation.to });
-        return res.json({ accepted: true });
-    }
-    res.status(400).json({ error: `Nieznany typ transakcji "${tx.type}"` });
+    res.status(503).json({ error: "Funkcja tymczasowo wyłączona: brak htlc-wallet" });
 });
 
 app.get("/htlc/:id", (req, res) => {

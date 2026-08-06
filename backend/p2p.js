@@ -225,7 +225,7 @@ class P2PNode {
             }
 
             case "CHAIN": {
-                const result = this.blockchain.replaceChain(message.chain);
+                const result = this.blockchain.replaceChain(message.chain, remoteAddr);
                 if (result.accepted) {
                     console.log(`✅ Przyjęto dłuższy łańcuch od ${remoteAddr} - nowa wysokość ${result.height}`);
                     if (this.mempool) this.mempool.revalidateAll();

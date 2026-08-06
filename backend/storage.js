@@ -38,6 +38,19 @@ class Storage {
         this.db.exec("CREATE INDEX IF NOT EXISTS idx_tx_to ON transactions(to_address)");
         this.db.exec("CREATE INDEX IF NOT EXISTS idx_tx_from ON transactions(from_address)");
 
+        // Dokładna kopia bloków otrzymanych przez P2P.
+        // JSON zachowuje kolejność i komplet pól historycznych transakcji.
+        this.db.exec(`CREATE TABLE IF NOT EXISTS raw_chain_blocks (
+            height INTEGER PRIMARY KEY,
+            block_json TEXT NOT NULL
+        )`);
+
+        // Metadane węzła, m.in. informacje o legacy snapshot.
+        this.db.exec(`CREATE TABLE IF NOT EXISTS node_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )`);
+
         this._insertBlock = this.db.prepare("INSERT INTO blocks (height, timestamp, previousHash, hash, nonce, difficulty) VALUES (?, ?, ?, ?, ?, ?)");
         this._insertTx = this.db.prepare("INSERT INTO transactions (blockHeight, from_address, to_address, amount, type, fee, timestamp, publicKey, signature) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
         this._insertCredit = this.db.prepare("INSERT INTO pool_credits (minerAddress, blockHeight, shares, amount, timestamp) VALUES (?, ?, ?, ?, ?)");
@@ -52,6 +65,43 @@ class Storage {
             for (const tx of block.transactions) {
                 this._insertTx.run(block.height, tx.from ?? null, tx.to, tx.amount, tx.type, tx.fee ?? null, tx.timestamp ?? null, tx.publicKey ?? null, tx.signature ?? null);
             }
+            this.db.exec("COMMIT");
+        } catch (err) {
+            this.db.exec("ROLLBACK");
+            throw err;
+        }
+    }
+
+    saveBlockWithRaw(block) {
+        this.db.exec("BEGIN");
+        try {
+            this.db.prepare(
+                "INSERT OR REPLACE INTO raw_chain_blocks (height, block_json) VALUES (?, ?)"
+            ).run(block.height, JSON.stringify(block));
+
+            this._insertBlock.run(
+                block.height,
+                block.timestamp,
+                block.previousHash,
+                block.hash,
+                block.nonce,
+                block.difficulty
+            );
+
+            for (const tx of block.transactions) {
+                this._insertTx.run(
+                    block.height,
+                    tx.from ?? null,
+                    tx.to,
+                    tx.amount,
+                    tx.type,
+                    tx.fee ?? null,
+                    tx.timestamp ?? null,
+                    tx.publicKey ?? null,
+                    tx.signature ?? null
+                );
+            }
+
             this.db.exec("COMMIT");
         } catch (err) {
             this.db.exec("ROLLBACK");
@@ -159,6 +209,64 @@ class Storage {
             ORDER BY events DESC
         `).all(sinceMs);
         return { totalActive: rows.length, top: rows.slice(0, topLimit) };
+    }
+
+    hasRawChain() {
+        return this.db.prepare(
+            "SELECT COUNT(*) AS n FROM raw_chain_blocks"
+        ).get().n > 0;
+    }
+
+    loadRawChain() {
+        return this.db.prepare(
+            "SELECT block_json FROM raw_chain_blocks ORDER BY height ASC"
+        ).all().map((row) => JSON.parse(row.block_json));
+    }
+
+    saveRawBlock(block) {
+        this.db.prepare(
+            "INSERT OR REPLACE INTO raw_chain_blocks (height, block_json) VALUES (?, ?)"
+        ).run(block.height, JSON.stringify(block));
+    }
+
+    replaceRawChain(chain) {
+        this.db.exec("BEGIN");
+        try {
+            this.db.exec("DELETE FROM raw_chain_blocks");
+
+            const insert = this.db.prepare(
+                "INSERT INTO raw_chain_blocks (height, block_json) VALUES (?, ?)"
+            );
+
+            for (const block of chain) {
+                insert.run(block.height, JSON.stringify(block));
+            }
+
+            this.db.exec("COMMIT");
+        } catch (err) {
+            this.db.exec("ROLLBACK");
+            throw err;
+        }
+    }
+
+    setMeta(key, value) {
+        this.db.prepare(
+            "INSERT OR REPLACE INTO node_meta (key, value) VALUES (?, ?)"
+        ).run(key, JSON.stringify(value));
+    }
+
+    getMeta(key, fallback = null) {
+        const row = this.db.prepare(
+            "SELECT value FROM node_meta WHERE key = ?"
+        ).get(key);
+
+        if (!row) return fallback;
+
+        try {
+            return JSON.parse(row.value);
+        } catch {
+            return row.value;
+        }
     }
 
     close() { this.db.close(); }

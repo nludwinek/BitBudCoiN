@@ -51,8 +51,34 @@ class Blockchain {
         // licząc z historii WŁASNEGO, już zweryfikowanego łańcucha, nigdy z
         // danych przysłanych z zewnątrz.
         this.difficulty = Math.pow(16, CONFIG.DIFFICULTY);
-        if (this.storage.hasBlocks()) {
+        if (this.storage.hasRawChain()) {
+            this.chain = this.storage.loadRawChain();
+            this._warnIfChainHasGaps();
+
+            if (this.storage.getMeta("legacySnapshot", false) === true) {
+                const storedDifficulty = Number(
+                    this.storage.getMeta(
+                        "networkDifficulty",
+                        this.getLatestBlock().difficulty
+                    )
+                );
+
+                if (!Number.isFinite(storedDifficulty) || storedDifficulty <= 0) {
+                    throw new Error("Nieprawidłowa trudność zapisana dla legacy snapshot");
+                }
+
+                this.difficulty = storedDifficulty;
+                this.storage.setMeta("networkDifficulty", this.difficulty);
+            } else {
+                this._recomputeDifficultyFromHistory();
+            }
+        } else if (this.storage.hasBlocks()) {
             this.chain = this.storage.loadChain();
+
+            // Pierwsze uruchomienie po aktualizacji:
+            // zachowaj dotychczasowy łańcuch również jako dokładny JSON.
+            this.storage.replaceRawChain(this.chain);
+
             this._warnIfChainHasGaps();
             this._recomputeDifficultyFromHistory();
         } else {
@@ -64,7 +90,7 @@ class Blockchain {
                 transactions, difficulty: this.difficulty
             });
             this.chain = [genesis];
-            this.storage.saveBlock(genesis);
+            this.storage.saveBlockWithRaw(genesis);
         }
     }
     getLatestBlock() { return this.chain[this.chain.length - 1]; }
@@ -152,12 +178,17 @@ class Blockchain {
         // logach, bo wyjątek nigdy nie docierał do nikogo, kto by go
         // zauważył).
         try {
-            this.storage.saveBlock(candidate);
+            this.storage.saveBlockWithRaw(candidate);
         } catch (err) {
             return { accepted: false, reason: "błąd zapisu do bazy: " + err.message };
         }
         this.chain.push(candidate);
         this.retargetIfDue(candidate);
+
+        // Zachowaj aktualną trudność także po ewentualnym retargetingu,
+        // aby restart nie wymagał przeliczania wadliwej historii legacy.
+        this.storage.setMeta("networkDifficulty", this.difficulty);
+
         return { accepted: true, block: candidate };
     }
     // Wywoływane PO udanym zapisaniu każdego bloku. Jeśli właśnie przyjęty
@@ -216,6 +247,229 @@ class Blockchain {
             }
         }
     }
+    replaceChain(candidateChain, remoteAddr = "") {
+        if (!Array.isArray(candidateChain) || candidateChain.length < 2) {
+            return { accepted: false, reason: "łańcuch jest pusty lub nieprawidłowy" };
+        }
+
+        const localLatest = this.getLatestBlock();
+        const candidateLatest = candidateChain[candidateChain.length - 1];
+
+        if (!candidateLatest || candidateLatest.height <= localLatest.height) {
+            return { accepted: false, reason: "łańcuch nie jest dłuższy" };
+        }
+
+        const remoteHost = String(remoteAddr)
+            .replace(/^::ffff:/, "")
+            .split(":")[0];
+
+        const trustedHost = String(CONFIG.TRUSTED_LEGACY_PEER || "")
+            .replace(/^::ffff:/, "")
+            .split(":")[0];
+
+        const isTrustedPeer =
+            remoteHost === trustedHost;
+
+        const isInitialLegacyBootstrap =
+            localLatest.height === 0 &&
+            isTrustedPeer;
+
+        const isLegacyContinuation =
+            localLatest.height > 0 &&
+            this.storage.getMeta("legacySnapshot", false) === true &&
+            isTrustedPeer;
+
+        // Po restarcie peer nadal wysyła pełny CHAIN.
+        // Nie przyjmujemy ponownie całej historii. Znajdujemy lokalny tip
+        // i rygorystycznie walidujemy wyłącznie nowe bloki po nim.
+        if (isLegacyContinuation) {
+            const anchorIndex = candidateChain.findIndex((block) =>
+                block &&
+                block.height === localLatest.height &&
+                block.hash === localLatest.hash
+            );
+
+            if (anchorIndex === -1) {
+                return {
+                    accepted: false,
+                    reason: `łańcuch peera nie zawiera lokalnego checkpointu ${localLatest.height}`
+                };
+            }
+
+            const suffix = candidateChain.slice(anchorIndex + 1);
+
+            if (suffix.length === 0) {
+                return {
+                    accepted: false,
+                    reason: "peer nie posiada nowych bloków"
+                };
+            }
+
+            let appended = 0;
+
+            for (const block of suffix) {
+                const result = this.receiveBlock(block);
+
+                if (!result.accepted) {
+                    return {
+                        accepted: false,
+                        reason: `odrzucono nowy blok ${block?.height}: ${result.reason}`,
+                        appended
+                    };
+                }
+
+                appended++;
+            }
+
+            this.storage.setMeta(
+                "strictValidatedHeight",
+                this.getLatestBlock().height
+            );
+
+            return {
+                accepted: true,
+                height: this.getLatestBlock().height,
+                legacySnapshot: true,
+                strictContinuation: true,
+                appended
+            };
+        }
+
+        if (!isInitialLegacyBootstrap) {
+            return {
+                accepted: false,
+                reason: "pełna synchronizacja legacy dozwolona tylko przy pierwszym uruchomieniu i od zaufanego peera"
+            };
+        }
+
+        const localGenesis = this.chain[0];
+        const remoteGenesis = candidateChain[0];
+
+        if (
+            !remoteGenesis ||
+            remoteGenesis.height !== 0 ||
+            remoteGenesis.hash !== localGenesis.hash
+        ) {
+            return { accepted: false, reason: "genesis nie pasuje" };
+        }
+
+        let previousHeight = -1;
+        let missingHeights = 0;
+        let hashMismatches = 0;
+        let brokenLinks = 0;
+
+        for (let i = 0; i < candidateChain.length; i++) {
+            const block = candidateChain[i];
+
+            if (
+                !block ||
+                !Number.isInteger(block.height) ||
+                !Number.isFinite(block.timestamp) ||
+                !Array.isArray(block.transactions) ||
+                typeof block.previousHash !== "string" ||
+                typeof block.hash !== "string" ||
+                !Number.isFinite(block.difficulty) ||
+                !Number.isFinite(block.nonce)
+            ) {
+                return {
+                    accepted: false,
+                    reason: `nieprawidłowa struktura bloku na pozycji ${i}`
+                };
+            }
+
+            if (block.height <= previousHeight) {
+                return {
+                    accepted: false,
+                    reason: `wysokości nie rosną przy bloku ${block.height}`
+                };
+            }
+
+            if (i > 0) {
+                const previous = candidateChain[i - 1];
+                const gap = block.height - previous.height - 1;
+
+                if (gap > 0) {
+                    missingHeights += gap;
+                } else if (block.previousHash !== previous.hash) {
+                    brokenLinks++;
+                    return {
+                        accepted: false,
+                        reason: `zerwany link między blokiem ${previous.height} i ${block.height}`
+                    };
+                }
+            }
+
+            const calculatedHash = computeBlockHash(block);
+
+            if (calculatedHash !== block.hash) {
+                hashMismatches++;
+            }
+
+            // Genesis ma ustalony historyczny hash i nie podlega
+            // standardowej walidacji Proof of Work.
+            if (
+                block.height !== 0 &&
+                block.hash > difficultyToTargetHex(block.difficulty)
+            ) {
+                return {
+                    accepted: false,
+                    reason: `blok ${block.height} nie spełnia zapisanej trudności`
+                };
+            }
+
+            previousHeight = block.height;
+        }
+
+        try {
+            this.storage.replaceRawChain(candidateChain);
+
+            this.storage.setMeta("legacySnapshot", true);
+            this.storage.setMeta("legacyCheckpointHeight", candidateLatest.height);
+            this.storage.setMeta("legacyMissingHeights", missingHeights);
+            this.storage.setMeta("legacyHashMismatches", hashMismatches);
+            this.storage.setMeta("legacyBrokenLinks", brokenLinks);
+            this.storage.setMeta("legacySourcePeer", remoteHost);
+            this.storage.setMeta("legacyAcceptedAt", Date.now());
+        } catch (err) {
+            return {
+                accepted: false,
+                reason: "błąd zapisu legacy snapshot: " + err.message
+            };
+        }
+
+        this.chain = candidateChain;
+
+        const checkpointDifficulty = Number(candidateLatest.difficulty);
+
+        if (!Number.isFinite(checkpointDifficulty) || checkpointDifficulty <= 0) {
+            return {
+                accepted: false,
+                reason: "checkpoint zawiera nieprawidłową trudność"
+            };
+        }
+
+        // Historia legacy ma luki, dlatego nie wolno odtwarzać z niej
+        // bieżącej trudności. Kotwiczymy stan z ostatniego bloku snapshotu.
+        this.difficulty = checkpointDifficulty;
+        this.storage.setMeta("networkDifficulty", this.difficulty);
+
+        this._warnIfChainHasGaps();
+
+        console.warn(
+            `⚠️  Przyjęto LEGACY SNAPSHOT do wysokości ${candidateLatest.height}; ` +
+            `brakujące wysokości: ${missingHeights}; ` +
+            `historyczne niezgodności hashy: ${hashMismatches}`
+        );
+
+        return {
+            accepted: true,
+            height: candidateLatest.height,
+            legacySnapshot: true,
+            missingHeights,
+            hashMismatches
+        };
+    }
+
     getChain() { return this.chain; }
     getRecentBlocks(limit = 20, beforeHeight = null) {
         let blocks = this.chain.slice().reverse();
@@ -375,6 +629,11 @@ class Blockchain {
             circulatingSupply, maxSupply: CONFIG.MAX_SUPPLY, premine: CONFIG.PREMINE,
             blocksUntilHalving: CONFIG.HALVING_INTERVAL - (height % CONFIG.HALVING_INTERVAL),
             blocksUntilRetarget: CONFIG.DIFFICULTY_ADJUSTMENT - (height % CONFIG.DIFFICULTY_ADJUSTMENT),
+            legacySnapshot: this.storage.getMeta("legacySnapshot", false),
+            legacyCheckpointHeight: this.storage.getMeta("legacyCheckpointHeight", null),
+            legacyMissingHeights: this.storage.getMeta("legacyMissingHeights", 0),
+            legacyHashMismatches: this.storage.getMeta("legacyHashMismatches", 0),
+            legacySourcePeer: this.storage.getMeta("legacySourcePeer", null),
             isValid: true
         };
     }
