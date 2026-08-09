@@ -181,7 +181,7 @@ class P2PNode {
         // po 120 s zdejmujemy stan "in flight", ale wprowadzamy cooldown.
         const timer = setTimeout(() => {
             this.chainSyncInFlight.delete(remoteAddr);
-            this.chainSyncCooldownUntil.set(remoteAddr, Date.now() + 5 * 60 * 1000);
+            this.chainSyncCooldownUntil.set(remoteAddr, Date.now() + 60 * 60 * 1000);
         }, 120000);
         timer.unref();
         this.chainSyncTimers.set(remoteAddr, timer);
@@ -266,10 +266,10 @@ class P2PNode {
 
                 if (!result.accepted) {
                     // Po nieudanej ciężkiej synchronizacji nie pytamy
-                    // ponownie o cały blockchain przez 5 minut.
+                    // ponownie o cały blockchain przez 1 godzinę.
                     this.chainSyncCooldownUntil.set(
                         remoteAddr,
-                        Date.now() + 5 * 60 * 1000
+                        Date.now() + 60 * 60 * 1000
                     );
                 }
                 if (result.accepted) {
