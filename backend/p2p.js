@@ -30,6 +30,13 @@ class P2PNode {
         this.configuredPeers = new Set(); // adresy, do których SAMI się łączymy (dostają retry)
         this.reconnectTimers = new Map();
         this.seenBlockHashes = new Set();
+
+        // Anti-flood synchronizacji: tylko jedno ciężkie GET_CHAIN
+        // do danego peera może być aktywne jednocześnie.
+        this.chainSyncInFlight = new Set();
+        this.chainSyncCooldownUntil = new Map();
+        this.chainSyncTimers = new Map();
+
         this.server = null;
         this.closed = false;
     }
@@ -161,6 +168,28 @@ class P2PNode {
         }
     }
 
+    _requestChain(socket, remoteAddr) {
+        const now = Date.now();
+        const cooldownUntil = this.chainSyncCooldownUntil.get(remoteAddr) || 0;
+
+        if (this.chainSyncInFlight.has(remoteAddr)) return false;
+        if (now < cooldownUntil) return false;
+
+        this.chainSyncInFlight.add(remoteAddr);
+
+        // Bezpiecznik: nawet gdy peer nigdy nie odeśle CHAIN,
+        // po 120 s zdejmujemy stan "in flight", ale wprowadzamy cooldown.
+        const timer = setTimeout(() => {
+            this.chainSyncInFlight.delete(remoteAddr);
+            this.chainSyncCooldownUntil.set(remoteAddr, Date.now() + 5 * 60 * 1000);
+        }, 120000);
+        timer.unref();
+        this.chainSyncTimers.set(remoteAddr, timer);
+
+        this._send(socket, { type: "GET_CHAIN" });
+        return true;
+    }
+
     broadcast(message, excludeAddr = null) {
         const line = JSON.stringify(message) + "\n";
         for (const [addr, socket] of this.sockets) {
@@ -211,7 +240,7 @@ class P2PNode {
                 }
                 const ourHeight = this.blockchain.getLatestBlock().height;
                 if (typeof message.height === "number" && message.height > ourHeight) {
-                    this._send(socket, { type: "GET_CHAIN" });
+                    this._requestChain(socket, remoteAddr);
                 }
                 break;
             }
@@ -225,7 +254,24 @@ class P2PNode {
             }
 
             case "CHAIN": {
+                const syncTimer = this.chainSyncTimers.get(remoteAddr);
+                if (syncTimer) {
+                    clearTimeout(syncTimer);
+                    this.chainSyncTimers.delete(remoteAddr);
+                }
+
+                this.chainSyncInFlight.delete(remoteAddr);
+
                 const result = this.blockchain.replaceChain(message.chain, remoteAddr);
+
+                if (!result.accepted) {
+                    // Po nieudanej ciężkiej synchronizacji nie pytamy
+                    // ponownie o cały blockchain przez 5 minut.
+                    this.chainSyncCooldownUntil.set(
+                        remoteAddr,
+                        Date.now() + 5 * 60 * 1000
+                    );
+                }
                 if (result.accepted) {
                     console.log(`✅ Przyjęto dłuższy łańcuch od ${remoteAddr} - nowa wysokość ${result.height}`);
                     if (this.mempool) this.mempool.revalidateAll();
@@ -251,8 +297,11 @@ class P2PNode {
                         console.log(`↪️  Odrzucono blok #${b.height} od ${remoteAddr}: ${result.reason}`);
                     }
                 } else if (b.height > ourHeight + 1) {
-                    console.log(`📡 ${remoteAddr} jest do przodu (#${b.height}, my #${ourHeight}) - proszę o cały łańcuch`);
-                    this._send(socket, { type: "GET_CHAIN" });
+                    const requested = this._requestChain(socket, remoteAddr);
+                    if (requested) {
+                        console.log(`📡 ${remoteAddr} jest do przodu (#${b.height}, my #${ourHeight}) - proszę o łańcuch`);
+                    }
+
                 }
                 break;
             }
