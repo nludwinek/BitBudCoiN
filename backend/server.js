@@ -11,8 +11,14 @@ const { difficultyToTargetHex } = require("./bbcblockchain");
 const swapOffers = require("./swap-offers");
 
 const app = express();
+const defaultJsonParser = express.json();
+const poolSubmitJsonParser = express.json({ limit: "512kb" });
+
 app.use(cors());
-app.use(express.json());
+app.use((req, res, next) => {
+    if (req.method === "POST" && req.path === "/pool/submit") return next();
+    defaultJsonParser(req, res, next);
+});
 app.use(rateLimiter);
 
 const blockchain = new Blockchain();
@@ -162,7 +168,7 @@ app.get("/pool/work", (req, res) => {
 // za jednym CGNAT-owym IP to normalka). strictLimiter (60/min) dławił
 // prawdziwe kopanie - te dwie trasy zostają tylko na ogólnym rateLimiter
 // (1000/min), zastosowanym już globalnie przez app.use() wyżej.
-app.post("/pool/submit", (req, res) => {
+app.post("/pool/submit", poolSubmitJsonParser, (req, res) => {
     const result = pool.submitShare(req.body.minerAddress, req.body.candidate);
     if (!result.accepted) return res.status(400).json(result);
     if (result.blockFound) p2p.broadcastNewBlock(result.block);
@@ -214,6 +220,9 @@ app.get("/miners/models", (req, res) => res.json([]));
 // będzie potrzebował własnego try/catch + next(err), ten handler sam z siebie
 // złapie tylko rzuty synchroniczne.
 app.use((err, req, res, next) => {
+    if (err?.type === "entity.too.large") {
+        return res.status(413).json({ error: "Request body too large" });
+    }
     console.error("Nieobsłużony błąd:", err);
     res.status(500).json({ error: "Wewnętrzny błąd serwera" });
 });
