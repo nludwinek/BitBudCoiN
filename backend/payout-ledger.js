@@ -893,6 +893,74 @@ class PayoutLedger {
         });
     }
 
+    rejectSubmitted(
+        batchId,
+        reason
+    ) {
+        return this._transaction(() => {
+            const batch =
+                this.getBatch(batchId);
+
+            if (!batch) {
+                throw new Error(
+                    "Nieznany payout batch"
+                );
+            }
+
+            if (batch.state !== "submitted") {
+                throw new Error(
+                    "Tylko submitted batch moze byc odrzucony ta sciezka"
+                );
+            }
+
+            if (!batch.txSignature) {
+                throw new Error(
+                    "Submitted batch bez podpisu"
+                );
+            }
+
+            const evidence =
+                this.getEvidence(
+                    batch.txSignature
+                );
+
+            if (
+                evidence.pending ||
+                evidence.confirmed
+            ) {
+                throw new Error(
+                    "Nie mozna zwolnic batcha z dowodem transakcji"
+                );
+            }
+
+            this.db.prepare(`
+                UPDATE pool_credits
+                SET payoutBatchId = NULL
+                WHERE
+                    payoutBatchId = ?
+                    AND paid = 0
+            `).run(batchId);
+
+            this.db.prepare(`
+                UPDATE payout_batches
+                SET
+                    state = 'failed',
+                    reason = ?
+                WHERE batchId = ?
+            `).run(
+                String(
+                    reason ||
+                    "definitive-rejection"
+                ),
+                batchId
+            );
+
+            return this.getBatch(
+                batchId
+            );
+        });
+    }
+
     getReferralPending() {
         return this.db.prepare(`
             SELECT batchId
