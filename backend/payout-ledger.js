@@ -22,9 +22,55 @@ class PayoutLedger {
         );
 
         if (!hasBatchColumn) {
-            this.db.exec(
-                "ALTER TABLE pool_credits ADD COLUMN payoutBatchId TEXT"
-            );
+            try {
+                this.db.exec(
+                    "ALTER TABLE pool_credits ADD COLUMN payoutBatchId TEXT"
+                );
+            } catch (err) {
+                /*
+                 * Dwa procesy payout moga wystartowac jednoczesnie:
+                 *
+                 * A: PRAGMA -> brak kolumny
+                 * B: PRAGMA -> brak kolumny
+                 * A: ALTER -> sukces
+                 * B: ALTER -> "duplicate column name"
+                 *
+                 * To jest bezpieczny race migracji schematu, nie awaria.
+                 * Ignorujemy WYLACZNIE duplicate-column i po nim
+                 * ponownie sprawdzamy rzeczywisty schemat.
+                 */
+                const message =
+                    String(
+                        err &&
+                        err.message
+                    );
+
+                if (
+                    !/duplicate column name/i.test(
+                        message
+                    )
+                ) {
+                    throw err;
+                }
+
+                const afterRace =
+                    this.db
+                        .prepare(
+                            "PRAGMA table_info(pool_credits)"
+                        )
+                        .all();
+
+                const reallyExists =
+                    afterRace.some(
+                        (column) =>
+                            column.name ===
+                            "payoutBatchId"
+                    );
+
+                if (!reallyExists) {
+                    throw err;
+                }
+            }
         }
 
         this.db.exec(`
