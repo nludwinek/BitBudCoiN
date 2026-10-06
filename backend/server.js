@@ -28,7 +28,7 @@ const { FamilyChat } = require("./family-chat");
 const {
     verifyAcceptOfferSignature,
     verifyRejectOfferSignature
-} = require("./swap-offer-auth");
+} = require("./swap-offers-auth");
 
 const {
     verifyHtlcCreateSignature,
