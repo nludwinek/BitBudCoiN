@@ -3,11 +3,17 @@ const { DatabaseSync } = require("node:sqlite");
 class Storage {
     constructor(dbPath) {
         this.db = new DatabaseSync(dbPath);
+
+        /*
+         * busy_timeout MUSI byc ustawiony przed journal_mode=WAL.
+         *
+         * PRAGMA journal_mode moze potrzebowac blokady bazy. Gdy dwa
+         * procesy PM2/payout startuja jednoczesnie, stara kolejnosc
+         * mogla rzucic SQLITE_BUSY zanim timeout zostal w ogole ustawiony.
+         */
+        this.db.exec("PRAGMA busy_timeout = 5000");
         this.db.exec("PRAGMA journal_mode = WAL");
         this.db.exec("PRAGMA foreign_keys = ON");
-
-        // Czekaj do 5 sekund, gdy drugi proces PM2 korzysta z tej samej bazy.
-        this.db.exec("PRAGMA busy_timeout = 5000");
 
         this._initSchema();
     }
