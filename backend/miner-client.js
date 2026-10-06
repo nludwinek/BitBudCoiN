@@ -21,14 +21,27 @@ async function getWork() {
     return res.json();
 }
 
-async function submitShare(candidate) {
+async function submitShare(candidate, workId) {
     const res = await fetch(`${serverUrl}/pool/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ minerAddress, candidate })
+        body: JSON.stringify({ minerAddress, workId, candidate })
     });
-    if (!res.ok) throw new Error(`POST /pool/submit: HTTP ${res.status}`);
-    return res.json();
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok) {
+        if (
+            res.status === 400 &&
+            data &&
+            typeof data === "object"
+        ) {
+            return data;
+        }
+
+        throw new Error(`POST /pool/submit: HTTP ${res.status}`);
+    }
+
+    return data;
 }
 
 // Realne liczenie hashy - szuka nonce, aż trafi w shareTarget (albo skończy się limit prób
@@ -71,7 +84,7 @@ async function run() {
             continue;
         }
 
-        const result = await submitShare(candidate);
+        const result = await submitShare(candidate, work.workId);
 
         if (result.blockFound) {
             blocksFound++;

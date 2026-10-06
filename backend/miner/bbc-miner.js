@@ -85,8 +85,15 @@ async function http(method, url, body) {
 }
 
 function validJob(j) {
-  return j && Number.isInteger(j.height) && typeof j.previousHash === 'string' && typeof j.timestamp === 'number' &&
-    Array.isArray(j.transactions) && typeof j.difficulty === 'number' && /^[0-9a-f]{64}$/.test(j.shareTarget || '');
+  return j &&
+    Number.isInteger(j.height) &&
+    typeof j.previousHash === 'string' &&
+    typeof j.timestamp === 'number' &&
+    Array.isArray(j.transactions) &&
+    typeof j.difficulty === 'number' &&
+    /^[0-9a-f]{64}$/.test(j.shareTarget || '') &&
+    typeof j.workId === 'string' &&
+    /^[0-9a-f]{32}$/.test(j.workId);
 }
 
 async function main() {
@@ -115,7 +122,7 @@ async function main() {
     w.on('message', (m) => {
       if (m.type === 'rate') stats.hashes += m.hashes;
       else if (m.type === 'share') {
-        if (hold) return; // czekamy na nowy cel z puli — udziały policzone dla starego celu zwykle odpadają
+        if (hold) return; // current job was explicitly rejected; wait for fresh server work
         const j = jobs.get(m.jobId);
         // kandydat na pełny blok idzie na początek kolejki — nigdy nie czeka za zwykłymi udziałami
         if (j && j.blockTarget && m.hash <= j.blockTarget) submitQueue.unshift(m); else submitQueue.push(m);
@@ -131,6 +138,7 @@ async function main() {
     const rec = Object.assign({}, j, { jobId });
     jobs.set(jobId, rec); if (jobs.size > 4) jobs.delete(jobs.keys().next().value);
     current = rec;
+    hold = false;
     const prefix = hashPrefix(j);
     workers.forEach((w, i) => w.postMessage({ type: 'job', jobId, prefix, shareTarget: j.shareTarget, startNonce: nonceBase + i, step: o.threads }));
   }
@@ -150,14 +158,15 @@ async function main() {
       while (submitQueue.length) {
         const m = submitQueue.shift(), j = jobs.get(m.jobId);
         if (!j) continue;
-        if (current && m.hash > current.shareTarget) continue; // cel puli już się zaostrzył (VARDIFF) — taki udział i tak by odpadł
+        // A share is tied to j.workId.
+        // Never compare it with the target of a newer "current" job.
         const candidate = { height: j.height, previousHash: j.previousHash, timestamp: j.timestamp, transactions: j.transactions, difficulty: j.difficulty, nonce: m.nonce, hash: m.hash };
         if (blockHash(j, m.nonce) !== m.hash) { console.error('Wewnętrzny błąd hasha — pomijam'); continue; } // nigdy nie wysyłamy czegoś, co sami nie potwierdziliśmy
         const wait = 400 - (Date.now() - lastSubmitAt); // pula ma wspólny limit zapytań dla wszystkich górników
         if (wait > 0) await sleep(wait);
         lastSubmitAt = Date.now();
         let res;
-        try { res = await http('POST', base + '/pool/submit', { minerAddress: address, candidate }); }
+        try { res = await http('POST', base + '/pool/submit', { minerAddress: address, workId: j.workId, candidate }); }
         catch (e) { stats.rejected++; await sleep(2000); continue; }
         const d = res.data || {};
         if (d.accepted) {
@@ -166,13 +175,27 @@ async function main() {
           if (d.blockFound) { stats.blocks++; console.log(`\n★ ZNALEZIONO BLOK na wysokości ${j.height}!`); refresh(true); }
         } else {
           stats.rejected++;
-          if (/nieaktualn|wysokosc/i.test(String(d.reason))) { // ktoś znalazł blok: wstrzymaj, wyrzuć stare udziały, weź nową pracę
-            stats.stale++; hold = true; submitQueue.length = 0;
-            refresh(true).finally(() => { hold = false; });
+          const rejectCode = String(d.code || '');
+
+          if (
+            rejectCode === 'UNKNOWN_JOB' ||
+            rejectCode === 'STALE_JOB' ||
+            /nieaktualn|wysokosc/i.test(String(d.reason))
+          ) {
+            stats.stale++;
+            hold = true;
+            submitQueue.length = 0;
+            current = null;
+            refresh(true);
           }
-          else if (/trudnosci/i.test(String(d.reason))) { // cel puli się zaostrzył (VARDIFF): wstrzymaj wysyłkę, weź nowy cel
-            hold = true; submitQueue.length = 0;
-            refresh(false).finally(() => { hold = false; });
+          else if (
+            rejectCode === 'LOW_DIFFICULTY_SHARE' ||
+            /trudnosci/i.test(String(d.reason))
+          ) {
+            hold = true;
+            submitQueue.length = 0;
+            current = null;
+            refresh(true);
           }
           else if (res.status === 429) await sleep(3000);
           else if (stats.rejected <= 5) console.log('Udział odrzucony: ' + (d.reason || d.error || res.status));

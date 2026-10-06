@@ -1940,6 +1940,10 @@ app.post(
             req.body &&
             req.body.candidate;
 
+        const workId =
+            req.body &&
+            req.body.workId;
+
         if (
             typeof minerAddress !== "string" ||
             !minerAddress
@@ -1973,7 +1977,8 @@ app.post(
         const result =
             pool.submitShare(
                 minerAddress,
-                candidate
+                candidate,
+                workId
             );
 
         if (!result.accepted) {
