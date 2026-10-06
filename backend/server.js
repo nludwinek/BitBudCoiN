@@ -151,6 +151,8 @@ function sekretPoprawny(podany) {
  * ============================================================
  */
 
+const IS_MAIN = require.main === module;
+
 const blockchain = new Blockchain();
 
 const mempool = new Mempool(
@@ -187,7 +189,9 @@ const familyChat = new FamilyChat(blockchain.storage);
  * ============================================================
  */
 
-p2p.start();
+if (IS_MAIN) {
+    p2p.start();
+}
 
 
 /*
@@ -598,8 +602,11 @@ app.get(
  * 1 sekunda = maksymalnie około 1 s opóźnienia w takim przypadku.
  */
 
-const liveSyncInterval =
-    setInterval(() => {
+let liveSyncInterval = null;
+
+if (IS_MAIN) {
+    liveSyncInterval =
+        setInterval(() => {
 
         if (sseClients.size === 0) {
             return;
@@ -609,7 +616,8 @@ const liveSyncInterval =
 
     }, 1000);
 
-liveSyncInterval.unref?.();
+    liveSyncInterval.unref?.();
+}
 
 
 /*
@@ -618,8 +626,11 @@ liveSyncInterval.unref?.();
  * komenda (grep MEMTREND) pokazuje caly przebieg od startu, nie
  * pojedyncze zdjecie w losowym momencie.
  */
-const memTrendInterval =
-    setInterval(() => {
+let memTrendInterval = null;
+
+if (IS_MAIN) {
+    memTrendInterval =
+        setInterval(() => {
 
         const m = process.memoryUsage();
 
@@ -633,7 +644,8 @@ const memTrendInterval =
 
     }, 10000);
 
-memTrendInterval.unref?.();
+    memTrendInterval.unref?.();
+}
 
 
 /*
@@ -2482,8 +2494,11 @@ app.use(
  * ============================================================
  */
 
-const server =
-    app.listen(
+let server = null;
+
+if (IS_MAIN) {
+    server =
+        app.listen(
         CONFIG.API_PORT,
         "127.0.0.1",
         () => {
@@ -2541,14 +2556,17 @@ server.headersTimeout =
     305000;
 
 
+}
+
 /*
  * ============================================================
  * SOCKET KEEPALIVE
  * ============================================================
  */
 
-server.on(
-    "connection",
+if (server) {
+    server.on(
+        "connection",
     (socket) => {
 
         try {
@@ -2568,6 +2586,8 @@ server.on(
     }
 );
 
+
+}
 
 /*
  * ============================================================
@@ -2679,15 +2699,17 @@ function shutdown(signal) {
 }
 
 
-process.on(
-    "SIGINT",
-    () => shutdown("SIGINT")
-);
+if (IS_MAIN) {
+    process.on(
+        "SIGINT",
+        () => shutdown("SIGINT")
+    );
 
-process.on(
-    "SIGTERM",
-    () => shutdown("SIGTERM")
-);
+    process.on(
+        "SIGTERM",
+        () => shutdown("SIGTERM")
+    );
+}
 
 
 /*
