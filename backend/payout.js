@@ -1,237 +1,446 @@
+"use strict";
+
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+
 const Storage = require("./storage");
 const CONFIG = require("./config");
-const { deriveAddress, signTransaction } = require("./wallet");
-const crypto = require("crypto");
-const growth = require("./growth");
 
-const ADDRESS_FORMAT = /^t?BbC[0-9a-fA-F]{40}$/;
+const {
+    deriveAddress
+} = require("./wallet");
 
-// NAPRAWA (dzisiaj, strategia dlugu wyplat - decyzja: B=10% nowych bloków,
-// C=25% sufit trudnosci gornika w pool.js): caly dlug SPRZED wdrozenia tego
-// pliku ("legacy", ~1.22M BbC/7 adresow w chwili tej decyzji) jest zbyt
-// duzy zeby splacac w calosci na raz - nawet 100% przyszlych nagrod to
-// ~5 miesiecy ZERA wyplat dla kogokolwiek. Wiec: current (kredyty OD
-// momentu wdrozenia, generowane juz pod sufitem 25%) splacany w calosci
-// jak dotychczas; legacy splacany stopniowo, z osobnego budzetu = 10%
-// wartosci KAZDEGO nowego bloku od momentu wdrozenia, kumulowanego miedzy
-// cyklami, wyplacany zawsze na NAJMNIEJSZY pozostaly dlug legacy na raz.
-// Budzet NIGDY nie schodzi ponizej zera.
-const LEGACY_STATE_PATH = path.join(__dirname, "legacy-debt-state.json");
-const LEGACY_SHARE = 0.10;
-const MIN_LEGACY_PAYOUT = 0.01; // ponizej tego nie oplaca sie wysylac (fee)
+const {
+    PayoutEngine
+} = require("./payout-engine");
 
-function loadOrInitLegacyState(storage) {
-    try {
-        return JSON.parse(fs.readFileSync(LEGACY_STATE_PATH, "utf8"));
-    } catch {
-        // NAPRAWA (dzisiaj, PILNA, po pierwszym realnym wdrozeniu):
-        // lastCheckedHeight=-1 przy starcie powodowalo, ze
-        // getBlockHeightsSince(-1) zwracalo CALA historyczna wysokosc
-        // lancucha jako "nowe" bloki - jednorazowy zastrzyk 10% z KAZDEGO
-        // bloku w calej historii (realnie zaobserwowane: 511405 BbC ze
-        // 102281 blokow) zamiast powolnej akumulacji od TERAZ. Start musi
-        // byc na biezacym czubku lancucha w chwili wdrozenia, nie -1.
-        const existingHeights = storage.getBlockHeightsSince(-1);
-        const currentTip = existingHeights.length > 0 ? existingHeights[existingHeights.length - 1] : -1;
-        const initial = { cutoffTimestamp: Date.now(), lastCheckedHeight: currentTip, accruedBudget: 0 };
-        fs.writeFileSync(LEGACY_STATE_PATH, JSON.stringify(initial, null, 2));
-        console.log(`ℹ️   Pierwsze uruchomienie logiki długu legacy - cutoff: ${new Date(initial.cutoffTimestamp).toISOString()}, licznik bloków od wysokości ${currentTip}`);
-        return initial;
-    }
-}
-function saveLegacyState(state) {
-    fs.writeFileSync(LEGACY_STATE_PATH, JSON.stringify(state, null, 2));
-}
-function rewardForHeight(height) {
-    return CONFIG.BLOCK_REWARD / Math.pow(2, Math.floor(height / CONFIG.HALVING_INTERVAL));
-}
-function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
-const DELAY_BETWEEN_SENDS_MS = 1200;
+const {
+    PayoutStateMigration
+} = require("./payout-state-migration");
 
-async function main(privateKeyPath, serverUrl, minPayout) {
-    const privateKey = fs.readFileSync(privateKeyPath, "utf8");
-    const publicKey = crypto.createPublicKey(privateKey).export({ type: "spki", format: "pem" });
-    const poolAddress = deriveAddress(publicKey);
-    if (poolAddress !== CONFIG.POOL_ADDRESS) {
-        console.error(`❌ Klucz nie pasuje do POOL_ADDRESS w config.js`);
-        process.exitCode = 1;
-        return;
-    }
 
-    /*
-     * NAPRAWA - gorny limit pojedynczej wyplaty.
-     *
-     * Nie bylo ZADNEGO sufitu. Kwota brala sie wprost z sumy kredytow w
-     * bazie, a te juz raz ulegly uszkodzeniu (przyczyna zamknieta przez
-     * MAX_MINER_DIFFICULTY_RATIO). Jeden zepsuty wiersz mogl wyslac cale
-     * saldo puli na jeden adres.
-     *
-     * Wezel i tak odrzucilby wyplate przekraczajaca saldo, wiec strata
-     * jest ograniczona do stanu puli - ale to za slaba gwarancja przy
-     * pieniadzach. Limit odpowiada 200 nagrodom blokowym; realna wyplata
-     * pojedynczego gornika nigdy sie do niego nie zbliza.
-     *
-     * Przekroczenie NIE jest ciche - konczy proces, zeby czlowiek na to
-     * spojrzal, zamiast pozwalac kolejnym probom isc dalej.
-     */
-    const MAX_POJEDYNCZEJ_WYPLATY = CONFIG.BLOCK_REWARD * 200;
-
-    async function sendPayout(minerAddress, amount) {
-
-        if (
-            typeof amount !== "number" ||
-            !Number.isFinite(amount) ||
-            !(amount > 0)
-        ) {
-            console.error(
-                "STOP: nieprawidlowa kwota wyplaty dla " + minerAddress +
-                ": " + amount
-            );
-            process.exit(1);
-        }
-
-        if (amount > MAX_POJEDYNCZEJ_WYPLATY) {
-            console.error(
-                "STOP: wyplata " + amount.toFixed(4) + " BbC dla " +
-                minerAddress + " przekracza limit " +
-                MAX_POJEDYNCZEJ_WYPLATY + " BbC."
-            );
-            console.error(
-                "To wyglada na uszkodzone dane w tabeli kredytow, nie na " +
-                "prawdziwy zarobek. Sprawdz recznie przed wznowieniem."
-            );
-            process.exit(1);
-        }
-
-        const tx = { from: poolAddress, to: minerAddress, amount, fee: CONFIG.MIN_FEE, timestamp: Date.now() };
-        const signature = signTransaction(tx, privateKey);
-        const candidate = { ...tx, publicKey, signature };
-        const res = await fetch(`${serverUrl}/transactions/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(candidate) });
-        return res.json();
-    }
-
-    const storage = new Storage(CONFIG.DATABASE);
-    const legacyState = loadOrInitLegacyState(storage);
-
-    // --- naliczenie budzetu legacy z nowych blokow od ostatniego sprawdzenia ---
-    const newHeights = storage.getBlockHeightsSince(legacyState.lastCheckedHeight);
-    if (newHeights.length > 0) {
-        let added = 0;
-        for (const h of newHeights) added += LEGACY_SHARE * rewardForHeight(h);
-        legacyState.accruedBudget += added;
-        legacyState.lastCheckedHeight = newHeights[newHeights.length - 1];
-        saveLegacyState(legacyState);
-        console.log(`ℹ️   ${newHeights.length} nowych bloków -> budżet legacy +${added.toFixed(4)} BbC (razem: ${legacyState.accruedBudget.toFixed(4)} BbC)`);
-    }
-
-    const split = storage.getUnpaidCreditsSummarySplitByCutoff(legacyState.cutoffTimestamp);
-    if (split.length === 0) { console.log("Brak niewypłaconych należności."); storage.close(); return; }
-
-    const pendingMempool = storage.loadMempool();
-    const addressesWithPendingPayout = new Set(
-        pendingMempool.filter((tx) => tx.from === poolAddress).map((tx) => tx.to)
+const LEGACY_STATE_PATH =
+    path.join(
+        __dirname,
+        "legacy-debt-state.json"
     );
 
-    // === 1) CURRENT: w całości, najmniejszy dług pierwszy - jak dotychczas ===
-    const currentQueue = split
-        .filter((s) => s.currentTotal > 0)
-        .sort((a, b) => a.currentTotal - b.currentTotal);
+const LEGACY_SHARE = 0.10;
 
-    for (const { minerAddress, currentTotal, currentCount } of currentQueue) {
-        if (minerAddress === poolAddress) continue;
-        if (!ADDRESS_FORMAT.test(minerAddress)) {
-            console.warn(`⚠️  Pomijam nieprawidłowy format adresu: "${minerAddress.slice(0, 60)}${minerAddress.length > 60 ? "..." : ""}" (current: ${currentTotal.toFixed(4)} BbC, ${currentCount} wpisów)`);
-            continue;
-        }
-        if (currentTotal < minPayout) continue;
-        if (addressesWithPendingPayout.has(minerAddress)) {
-            console.log(`⏳   ${minerAddress} ma już oczekującą wypłatę, czekam (current: ${currentTotal.toFixed(4)} BbC)`);
-            continue;
-        }
-        try {
-            const wasNeverPaidBefore = storage.getCreditsForAddress(minerAddress).paidCount === 0;
-            const result = await sendPayout(minerAddress, currentTotal);
-            if (result.accepted) {
-                const creditIds = storage.getUnpaidCreditIdsForAddressSince(minerAddress, legacyState.cutoffTimestamp);
-                storage.markCreditsPaid(creditIds);
-                console.log(`✅   [current] Wypłacono ${currentTotal.toFixed(4)} BbC dla ${minerAddress}`);
-                if (wasNeverPaidBefore) {
-                    try {
-                        const ref = growth.creditReferralReward(minerAddress, storage);
-                        if (ref.credited) {
-                            console.log(`🎁   [referral] +${ref.amount} BbC dla ${ref.referrerWallet} (polecił ${minerAddress})`);
-                        }
-                    } catch (refErr) {
-                        console.error(`⚠️  [referral] Nagroda nie naliczona (payout mimo to poprawny): ${refErr.message}`);
-                    }
-                }
-            } else {
-                const reason = result.reason ?? result.error ?? JSON.stringify(result);
-                console.warn(`⚠️  [current] Odrzucono (${minerAddress}, próba: ${currentTotal.toFixed(4)} BbC): ${reason}`);
-                if (typeof reason === "string" && reason.includes("Niewystarczające saldo")) {
-                    console.log("💤   [current] Reszta tej części jest równa lub większa - kończę, spróbuję ponownie za chwilę.");
-                    break;
-                }
-            }
-        } catch (err) { console.error(`❌   [current] ${err.message}`); }
-        await sleep(DELAY_BETWEEN_SENDS_MS);
-    }
+const MIN_LEGACY_PAYOUT =
+    0.01;
 
-    // === 2) LEGACY: częściowo, z budżetu, tylko najmniejszy dług na raz ===
-    if (legacyState.accruedBudget >= MIN_LEGACY_PAYOUT) {
-        const legacyQueue = split
-            .filter((s) => s.legacyTotal > 0)
-            .sort((a, b) => a.legacyTotal - b.legacyTotal);
+const DELAY_BETWEEN_SENDS_MS =
+    1200;
 
-        const target = legacyQueue[0];
-        if (target && ADDRESS_FORMAT.test(target.minerAddress) && !addressesWithPendingPayout.has(target.minerAddress)) {
-            const { creditIds, amount } = storage.getUnpaidLegacyCreditIdsUpToAmount(
-                target.minerAddress, legacyState.cutoffTimestamp, legacyState.accruedBudget
-            );
-            if (amount > 0) {
-                try {
-                    const wasNeverPaidBefore = storage.getCreditsForAddress(target.minerAddress).paidCount === 0;
-                    const result = await sendPayout(target.minerAddress, amount);
-                    if (result.accepted) {
-                        storage.markCreditsPaid(creditIds);
-                        legacyState.accruedBudget -= amount;
-                        saveLegacyState(legacyState);
-                        console.log(`✅   [legacy] Wypłacono ${amount.toFixed(4)} BbC dla ${target.minerAddress} (zostało z długu legacy tego adresu: ${(target.legacyTotal - amount).toFixed(4)} BbC, budżet: ${legacyState.accruedBudget.toFixed(4)} BbC)`);
-                        if (wasNeverPaidBefore) {
-                            try {
-                                const ref = growth.creditReferralReward(target.minerAddress, storage);
-                                if (ref.credited) {
-                                    console.log(`🎁   [referral] +${ref.amount} BbC dla ${ref.referrerWallet} (polecił ${target.minerAddress})`);
-                                }
-                            } catch (refErr) {
-                                console.error(`⚠️  [referral] Nagroda nie naliczona (payout mimo to poprawny): ${refErr.message}`);
-                            }
-                        }
-                    } else {
-                        const reason = result.reason ?? result.error ?? JSON.stringify(result);
-                        console.warn(`⚠️  [legacy] Odrzucono (${target.minerAddress}, próba: ${amount.toFixed(4)} BbC): ${reason}`);
-                    }
-                } catch (err) { console.error(`❌   [legacy] ${err.message}`); }
-            }
-        }
-    }
+const MAX_PAYOUT_MULTIPLIER =
+    200;
 
-    storage.close();
+
+function rewardForHeight(height) {
+    return (
+        CONFIG.BLOCK_REWARD /
+        Math.pow(
+            2,
+            Math.floor(
+                height /
+                CONFIG.HALVING_INTERVAL
+            )
+        )
+    );
 }
+
+
+function parseMinPayout(value) {
+    if (value === undefined) {
+        return 1;
+    }
+
+    const parsed =
+        Number(value);
+
+    if (
+        !Number.isFinite(parsed) ||
+        parsed < 0
+    ) {
+        return 1;
+    }
+
+    return parsed;
+}
+
+
+function isLoopbackServerUrl(value) {
+    let parsed;
+
+    try {
+        parsed =
+            new URL(
+                String(value)
+            );
+    } catch {
+        return false;
+    }
+
+    if (
+        parsed.protocol !== "http:" &&
+        parsed.protocol !== "https:"
+    ) {
+        return false;
+    }
+
+    const hostname =
+        parsed.hostname
+            .toLowerCase();
+
+    if (
+        hostname === "localhost" ||
+        hostname === "::1" ||
+        hostname === "[::1]"
+    ) {
+        return true;
+    }
+
+    const ipv4 =
+        hostname.match(
+            /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
+        );
+
+    if (!ipv4) {
+        return false;
+    }
+
+    const octets =
+        ipv4
+            .slice(1)
+            .map(Number);
+
+    if (
+        octets.some(
+            (part) =>
+                !Number.isInteger(part) ||
+                part < 0 ||
+                part > 255
+        )
+    ) {
+        return false;
+    }
+
+    return octets[0] === 127;
+}
+
+
+function logCycle(result) {
+    const migration =
+        result.migration;
+
+    const cycle =
+        result.cycle;
+
+    console.log(
+        "[payout] state source: " +
+        migration.source +
+        ", cutoff=" +
+        migration.state
+            .cutoffTimestamp +
+        ", lastHeight=" +
+        migration.state
+            .lastCheckedHeight +
+        ", legacyBudget=" +
+        Number(
+            migration.state
+                .accruedBudget
+        ).toFixed(8)
+    );
+
+    if (
+        cycle.budget &&
+        cycle.budget.advanced
+    ) {
+        console.log(
+            "[payout] legacy budget +" +
+            Number(
+                cycle.budget.added
+            ).toFixed(8) +
+            " BbC from " +
+            cycle.budget.blocks +
+            " new blocks"
+        );
+    }
+
+    for (
+        const item of
+        cycle.recovered || []
+    ) {
+        console.log(
+            "[payout] recovered " +
+            item.batch.batchId +
+            " -> " +
+            item.status
+        );
+    }
+
+    for (
+        const item of
+        cycle.currentResults || []
+    ) {
+        console.log(
+            "[payout] current " +
+            item.minerAddress +
+            " -> " +
+            item.result.status
+        );
+    }
+
+    if (cycle.legacyResult) {
+        console.log(
+            "[payout] legacy -> " +
+            cycle.legacyResult.status
+        );
+    }
+
+    const referrals = [
+        ...(cycle.referralsBefore || []),
+        ...(cycle.referralsAfter || [])
+    ];
+
+    for (
+        const item of referrals
+    ) {
+        console.log(
+            "[payout] referral " +
+            item.minerAddress +
+            " -> " +
+            (
+                item.reward.credited
+                    ? "credited"
+                    : item.reward.reason
+            )
+        );
+    }
+}
+
+
+async function main(
+    privateKeyPath,
+    serverUrl,
+    minPayout,
+    options = {}
+) {
+    if (
+        typeof privateKeyPath !==
+            "string" ||
+        privateKeyPath.length === 0
+    ) {
+        throw new Error(
+            "Brak sciezki do klucza puli"
+        );
+    }
+
+    const privateKey =
+        fs.readFileSync(
+            privateKeyPath,
+            "utf8"
+        );
+
+    const publicKey =
+        crypto
+            .createPublicKey(
+                privateKey
+            )
+            .export({
+                type: "spki",
+                format: "pem"
+            });
+
+    const poolAddress =
+        deriveAddress(
+            publicKey
+        );
+
+    const expectedPoolAddress =
+        options.expectedPoolAddress ??
+        CONFIG.POOL_ADDRESS;
+
+    if (
+        poolAddress !==
+        expectedPoolAddress
+    ) {
+        throw new Error(
+            "STOP: klucz nie pasuje do POOL_ADDRESS"
+        );
+    }
+
+    const databasePath =
+        options.databasePath ??
+        CONFIG.DATABASE;
+
+    const statePath =
+        options.statePath ??
+        LEGACY_STATE_PATH;
+
+    const resolvedServerUrl =
+        serverUrl ||
+        `http://localhost:${CONFIG.API_PORT}`;
+
+    /*
+     * Idempotent recovery rozstrzyga stan transakcji na podstawie
+     * TEJ SAMEJ lokalnej bazy SQLite co node.
+     *
+     * Dlatego prawdziwy HTTP payout musi isc do lokalnego noda.
+     * Testy moga wstrzyknac submitFn i wtedy sieci w ogole nie uzywamy.
+     */
+    if (
+        typeof options.submitFn !== "function" &&
+        !isLoopbackServerUrl(
+            resolvedServerUrl
+        )
+    ) {
+        throw new Error(
+            "STOP: payout HTTP wymaga lokalnego wezla; " +
+            "zdalny serverUrl nie daje bezpiecznego lokalnego reconciliation"
+        );
+    }
+
+    const payoutMinimum =
+        parseMinPayout(
+            minPayout
+        );
+
+    const maxSinglePayout =
+        CONFIG.BLOCK_REWARD *
+        MAX_PAYOUT_MULTIPLIER;
+
+    let storage = null;
+
+    try {
+        storage =
+            new Storage(
+                databasePath
+            );
+
+        /*
+         * Pierwsze uruchomienie po upgrade:
+         * zachowuje DOKLADNIE cutoffTimestamp,
+         * lastCheckedHeight i accruedBudget
+         * ze starego legacy-debt-state.json.
+         *
+         * Po migracji SQLite jest zrodlem prawdy.
+         */
+        const migration =
+            new PayoutStateMigration(
+                storage,
+                {
+                    statePath,
+                    now:
+                        options.now
+                }
+            ).migrate();
+
+        const engine =
+            new PayoutEngine({
+                storage,
+                privateKey,
+                publicKey,
+                poolAddress,
+                serverUrl:
+                    resolvedServerUrl,
+                fee:
+                    CONFIG.MIN_FEE,
+                minPayout:
+                    payoutMinimum,
+                maxSinglePayout,
+                submitFn:
+                    options.submitFn,
+                now:
+                    options.now,
+                sleepFn:
+                    options.sleepFn,
+                delayMs:
+                    options.delayMs ??
+                    DELAY_BETWEEN_SENDS_MS
+            });
+
+        const cycle =
+            await engine.runCycle({
+                cutoffTimestamp:
+                    migration.state
+                        .cutoffTimestamp,
+                rewardForHeight,
+                legacyShare:
+                    LEGACY_SHARE,
+                minLegacyPayout:
+                    MIN_LEGACY_PAYOUT
+            });
+
+        const result = {
+            migration,
+            cycle
+        };
+
+        if (
+            options.log !== false
+        ) {
+            logCycle(
+                result
+            );
+        }
+
+        return result;
+    } finally {
+        if (storage) {
+            storage.close();
+        }
+    }
+}
+
 
 if (require.main === module) {
-    const privateKeyPath = process.argv[2];
-    const serverUrl = process.argv[3] || `http://localhost:${CONFIG.API_PORT}`;
-    const minPayoutArg = process.argv[4];
-    let minPayout = 1;
-    if (minPayoutArg !== undefined) {
-        const parsed = Number(minPayoutArg);
-        minPayout = Number.isNaN(parsed) ? 1 : parsed;
+    const privateKeyPath =
+        process.argv[2];
+
+    const serverUrl =
+        process.argv[3] ||
+        `http://localhost:${CONFIG.API_PORT}`;
+
+    const minPayout =
+        parseMinPayout(
+            process.argv[4]
+        );
+
+    if (!privateKeyPath) {
+        console.error(
+            "Uzycie: node payout.js <klucz_puli.pem> [url] [min_wyplata]"
+        );
+
+        process.exit(1);
     }
-    if (!privateKeyPath) { console.error("Użycie: node payout.js <klucz_puli.pem> [url] [min_wyplata]"); process.exit(1); }
-    main(privateKeyPath, serverUrl, minPayout).catch((err) => { console.error("❌  ", err); process.exit(1); });
+
+    main(
+        privateKeyPath,
+        serverUrl,
+        minPayout
+    ).catch(
+        (err) => {
+            console.error(
+                "[payout] STOP:",
+                err
+            );
+
+            process.exit(1);
+        }
+    );
 }
 
-module.exports = { main };
+
+module.exports = {
+    main,
+    rewardForHeight,
+    parseMinPayout,
+    LEGACY_STATE_PATH,
+    LEGACY_SHARE,
+    MIN_LEGACY_PAYOUT,
+    MAX_PAYOUT_MULTIPLIER,
+    isLoopbackServerUrl
+};
