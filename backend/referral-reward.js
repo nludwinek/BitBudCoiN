@@ -47,6 +47,49 @@ class ReferralReward {
     }
 
     _initSchema() {
+        /*
+         * payout.js nie moze zalezec od efektu ubocznego require("./growth").
+         * ReferralReward sam gwarantuje minimalny schemat, ktorego potrzebuje.
+         */
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS growth_users (
+                id TEXT PRIMARY KEY,
+                wallet TEXT UNIQUE,
+                referral_code TEXT UNIQUE,
+                referred_by TEXT,
+                created_at INTEGER,
+                miners INTEGER DEFAULT 0,
+                referrals INTEGER DEFAULT 0
+            )
+        `);
+
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS growth_events (
+                id TEXT PRIMARY KEY,
+                type TEXT,
+                timestamp INTEGER,
+                data TEXT
+            )
+        `);
+
+        try {
+            this.db.exec(`
+                ALTER TABLE growth_users
+                ADD COLUMN rewarded_referrals INTEGER DEFAULT 0
+            `);
+        } catch (err) {
+            if (
+                !/duplicate column name/i.test(
+                    String(
+                        err &&
+                        err.message
+                    )
+                )
+            ) {
+                throw err;
+            }
+        }
+
         this.db.exec(`
             CREATE TABLE IF NOT EXISTS growth_referral_rewards (
                 referredWallet TEXT PRIMARY KEY,

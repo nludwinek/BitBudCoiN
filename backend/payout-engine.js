@@ -717,11 +717,14 @@ class PayoutEngine {
                 "MAX_SINGLE_PAYOUT"
             );
 
-            return {
-                status:
-                    "blocked-max",
-                batch
-            };
+            throw new Error(
+                "STOP: MAX_SINGLE_PAYOUT: " +
+                Number(batch.amount) +
+                " > " +
+                this.maxSinglePayout +
+                " dla " +
+                minerAddress
+            );
         }
 
         return this.resolveBatch(
@@ -781,11 +784,14 @@ class PayoutEngine {
                 "MAX_SINGLE_PAYOUT"
             );
 
-            return {
-                status:
-                    "blocked-max",
-                batch
-            };
+            throw new Error(
+                "STOP: MAX_SINGLE_PAYOUT: " +
+                Number(batch.amount) +
+                " > " +
+                this.maxSinglePayout +
+                " dla " +
+                minerAddress
+            );
         }
 
         return this.resolveBatch(

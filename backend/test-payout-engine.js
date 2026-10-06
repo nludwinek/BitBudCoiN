@@ -832,16 +832,14 @@ let storage = null;
                     }
             });
 
-        const maxResult =
-            await maxEngine
-                .submitCurrent(
-                    D,
-                    1000
-                );
-
-        assert.equal(
-            maxResult.status,
-            "blocked-max"
+        await assert.rejects(
+            () =>
+                maxEngine
+                    .submitCurrent(
+                        D,
+                        1000
+                    ),
+            /MAX_SINGLE_PAYOUT/
         );
 
         assert.equal(
@@ -869,7 +867,7 @@ let storage = null;
         );
 
         pass(
-            "MAX_PAYOUT_GUARD_RELEASES_UNSENT_BATCH"
+            "MAX_PAYOUT_GUARD_FAILS_STOP"
         );
 
 
