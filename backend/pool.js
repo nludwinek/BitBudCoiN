@@ -1,7 +1,14 @@
 const CONFIG = require("./config");
+const crypto = require("crypto");
 const { computeBlockHash, difficultyToTargetHex } = require("./bbcblockchain");
 
 const MAX_SEEN_SHARE_HASHES = 20000;
+
+// Server-issued immutable mining jobs.
+// A submitted share is always checked against the difficulty/targets
+// that were issued with that exact job.
+const WORK_JOB_TTL_MS = 2 * 60 * 1000;
+const MAX_ACTIVE_WORK_JOBS = 10000;
 
 /* Limit sledzonych trudnosci gornikow - patrz komentarz przy
    getMinerDifficulty(). 5000 to z gora wiecej, niz ta siec kiedykolwiek
@@ -35,21 +42,110 @@ class MiningPool {
         this.seenShareHashes = new Set();
         this.minerDifficulty = new Map();
         this.minerLastShareAt = new Map();
+
+        // workId -> immutable server-side mining job
+        this.workJobs = new Map();
     }
     getWork(minerAddress) {
+        this._cleanupWorkJobs();
+
         const latest = this.blockchain.getLatestBlock();
         const height = latest.height + 1;
         const blockDifficulty = this.blockchain.difficulty;
-        const personalDifficulty = minerAddress ? this.getMinerDifficulty(minerAddress) : this.shareDifficulty;
+        const personalDifficulty = minerAddress
+            ? this.getMinerDifficulty(minerAddress)
+            : this.shareDifficulty;
+
         const pendingTxs = this.mempool ? this.mempool.selectForBlock() : [];
         const transactions = this.blockchain.buildBlockTransactions(this.poolAddress, pendingTxs);
-        return { height, previousHash: latest.hash, timestamp: Date.now(), transactions, difficulty: blockDifficulty, shareTarget: difficultyToTargetHex(personalDifficulty), blockTarget: difficultyToTargetHex(blockDifficulty), requestedBy: minerAddress ?? null };
+
+        const timestamp = Date.now();
+        const shareTarget = difficultyToTargetHex(personalDifficulty);
+        const blockTarget = difficultyToTargetHex(blockDifficulty);
+        const workId = crypto.randomBytes(16).toString("hex");
+
+        const job = Object.freeze({
+            workId,
+            minerAddress: minerAddress ?? null,
+            height,
+            previousHash: latest.hash,
+            timestamp,
+
+            // Keep an immutable serialized copy for exact template validation.
+            transactionsJson: JSON.stringify(transactions),
+
+            blockDifficulty,
+            personalDifficulty,
+            shareTarget,
+            blockTarget,
+            createdAt: Date.now()
+        });
+
+        this.workJobs.set(workId, job);
+        this._enforceWorkJobLimit();
+
+        return {
+            workId,
+            height,
+            previousHash: latest.hash,
+            timestamp,
+            transactions,
+            difficulty: blockDifficulty,
+            shareTarget,
+            blockTarget,
+            requestedBy: minerAddress ?? null
+        };
     }
-    submitShare(minerAddress, candidate) {
-        if (!minerAddress) return { accepted: false, reason: "Brak adresu gornika" };
-        if (!candidate || typeof candidate.hash !== "string") return { accepted: false, reason: "Nieprawidlowe zgloszenie" };
-        if (computeBlockHash(candidate) !== candidate.hash) return { accepted: false, reason: "hash nie zgadza sie z trescia" };
-        if (this.seenShareHashes.has(candidate.hash)) return { accepted: false, reason: "duplikat" };
+
+    submitShare(minerAddress, candidate, workId) {
+        if (!minerAddress) {
+            return { accepted: false, code: "WRONG_MINER", reason: "Brak adresu gornika" };
+        }
+
+        if (!candidate || typeof candidate.hash !== "string") {
+            return { accepted: false, code: "INVALID_JOB_DATA", reason: "Nieprawidlowe zgloszenie" };
+        }
+
+        if (typeof workId !== "string" || !/^[0-9a-f]{32}$/.test(workId)) {
+            return { accepted: false, code: "UNKNOWN_JOB", reason: "Brak workId" };
+        }
+
+        const job = this.workJobs.get(workId);
+
+        if (!job) {
+            return { accepted: false, code: "UNKNOWN_JOB", reason: "Nieznany workId" };
+        }
+
+        if ((Date.now() - job.createdAt) > WORK_JOB_TTL_MS) {
+            this.workJobs.delete(workId);
+            return { accepted: false, code: "STALE_JOB", reason: "Job wygasl - pobierz nowa prace" };
+        }
+
+        if (job.minerAddress !== minerAddress) {
+            return { accepted: false, code: "WRONG_MINER", reason: "workId nalezy do innego gornika" };
+        }
+
+        if (
+            candidate.height !== job.height ||
+            candidate.previousHash !== job.previousHash ||
+            candidate.timestamp !== job.timestamp ||
+            candidate.difficulty !== job.blockDifficulty ||
+            JSON.stringify(candidate.transactions) !== job.transactionsJson
+        ) {
+            return {
+                accepted: false,
+                code: "INVALID_JOB_DATA",
+                reason: "Kandydat nie odpowiada wydanemu jobowi"
+            };
+        }
+
+        if (computeBlockHash(candidate) !== candidate.hash) {
+            return { accepted: false, code: "INVALID_HASH", reason: "hash nie zgadza sie z trescia" };
+        }
+
+        if (this.seenShareHashes.has(candidate.hash)) {
+            return { accepted: false, code: "DUPLICATE_SHARE", reason: "duplikat" };
+        }
         // NAPRAWA (dzisiaj, PILNA): nic tutaj nie sprawdzalo, ze coinbase w
         // zgloszonym kandydacie faktycznie idzie na this.poolAddress, tak
         // jak wydal je getWork(). Gornik mogl wziac szablon, podmienic
@@ -64,7 +160,7 @@ class MiningPool {
             ? candidate.transactions.find((tx) => tx && tx.type === "coinbase")
             : null;
         if (!candidateCoinbase || candidateCoinbase.to !== this.poolAddress) {
-            return { accepted: false, reason: "coinbase w zgloszeniu nie idzie na adres puli - odrzucone" };
+            return { accepted: false, code: "INVALID_JOB_DATA", reason: "coinbase w zgloszeniu nie idzie na adres puli - odrzucone" };
         }
         /*
          * NAPRAWA: submitShare NIE sprawdzalo ani candidate.height, ani
@@ -99,6 +195,7 @@ class MiningPool {
             ) {
                 return {
                     accepted: false,
+                    code: "STALE_JOB",
                     reason: "zgloszenie dotyczy nieaktualnego bloku - pobierz nowa prace"
                 };
             }
@@ -111,28 +208,39 @@ class MiningPool {
             if (candidate.height !== oczekiwanaWysokosc) {
                 return {
                     accepted: false,
+                    code: "STALE_JOB",
                     reason: "wysokosc zgloszenia nie pasuje do wskazanego poprzednika"
                 };
             }
         }
+        // IMPORTANT: validate against THIS job, not current mutable VARDIFF.
+        const shareTargetHex = job.shareTarget;
 
-        const shareTargetHex = difficultyToTargetHex(this.getMinerDifficulty(minerAddress));
-        if (candidate.hash > shareTargetHex) return { accepted: false, reason: "nie spelnia trudnosci share" };
-        const minerDiffAtSubmit = this.getMinerDifficulty(minerAddress);
+        if (candidate.hash > shareTargetHex) {
+            return {
+                accepted: false,
+                code: "LOW_DIFFICULTY_SHARE",
+                reason: "nie spelnia trudnosci share"
+            };
+        }
+
+        const minerDiffAtSubmit = job.personalDifficulty;
+
+        // Changes only the difficulty used for future jobs.
         this._adjustMinerDifficulty(minerAddress);
         this._rememberShareHash(candidate.hash);
         this.roundShares.set(minerAddress, (this.roundShares.get(minerAddress) || 0) + 1);
         let paidNow = 0;
         if (minerAddress !== this.poolAddress) {
-            const height = this.blockchain.getLatestBlock().height + 1;
+            const height = job.height;
             const reward = this.blockchain.getRewardForHeight(height);
             const maxShareValue = reward * (1 - this.poolFee);
             // Ten sam MAX_MINER_DIFFICULTY_RATIO co w _adjustMinerDifficulty,
             // ale wymuszony TU NIEZALEŻNIE - z tych samych powodów co
             // uzasadnienie Math.min() ponizej: pojedynczy punkt poprawności
             // (tylko w ratchecie) jest kruchy, wymuszenie na wyjsciu nie jest.
-            const effectiveMinerDiff = Math.min(minerDiffAtSubmit, this.blockchain.difficulty * MAX_MINER_DIFFICULTY_RATIO);
-            const rawShareValue = maxShareValue * (effectiveMinerDiff / this.blockchain.difficulty);
+            const effectiveMinerDiff = Math.min(minerDiffAtSubmit, job.blockDifficulty * MAX_MINER_DIFFICULTY_RATIO);
+            const rawShareValue = maxShareValue * (effectiveMinerDiff / job.blockDifficulty);
             // NAPRAWA (2026-08-27, audyt VARDIFF): powyzsze dwa Math.min()
             // (na effectiveMinerDiff i przez konstrukcje samego stosunku)
             // matematycznie nie pozwalaja rawShareValue przekroczyc
@@ -168,10 +276,7 @@ class MiningPool {
         //
         // Naprawa: ten sam punkt odniesienia co receiveBlock() faktycznie
         // sprawdza - candidate.difficulty, nie zywy zegar.
-        const blockTargetHex =
-            difficultyToTargetHex(
-                candidate.difficulty
-            );
+        const blockTargetHex = job.blockTarget;
         if (candidate.hash > blockTargetHex) return { accepted: true, share: true, blockFound: false, paidNow };
         const result = this.blockchain.receiveBlock(candidate);
         if (!result.accepted) console.error("BLOK ODRZUCONY przy wysokosci " + candidate.height + ": " + result.reason);
@@ -180,6 +285,24 @@ class MiningPool {
         if (this.mempool) this.mempool.pruneConfirmed(result.block);
         return { accepted: true, share: true, blockFound: true, block: result.block, paidNow };
     }
+    _cleanupWorkJobs(now = Date.now()) {
+        for (const [workId, job] of this.workJobs) {
+            if ((now - job.createdAt) > WORK_JOB_TTL_MS) {
+                this.workJobs.delete(workId);
+            }
+        }
+    }
+
+    _enforceWorkJobLimit() {
+        this._cleanupWorkJobs();
+
+        while (this.workJobs.size > MAX_ACTIVE_WORK_JOBS) {
+            const oldestWorkId = this.workJobs.keys().next().value;
+            if (oldestWorkId === undefined) break;
+            this.workJobs.delete(oldestWorkId);
+        }
+    }
+
     /*
      * NAPRAWA - wyciek pamieci przez samo pobieranie pracy.
      *
