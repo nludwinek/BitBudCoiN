@@ -128,6 +128,34 @@ class PayoutLedger {
             )
         `);
 
+        /*
+         * Trwaly fail-stop dla payoutow.
+         *
+         * Raz ustawiony halted=1 NIE jest tutaj automatycznie
+         * czyszczony. Reconciliation musi byc jawne i reczne.
+         */
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS payout_integrity_state (
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                halted INTEGER NOT NULL DEFAULT 0
+                    CHECK(halted IN (0, 1)),
+                reason TEXT,
+                batchId TEXT,
+                txSignature TEXT,
+                evidenceJson TEXT,
+                detectedAt INTEGER
+            )
+        `);
+
+        this.db.prepare(`
+            INSERT OR IGNORE INTO payout_integrity_state
+            (
+                singleton,
+                halted
+            )
+            VALUES (1, 0)
+        `).run();
+
         this.db.exec(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_payout_signature ON payout_batches(txSignature)"
         );
@@ -620,6 +648,342 @@ class PayoutLedger {
                 )
         );
     }
+
+    getConfirmedBatches() {
+        return this.db.prepare(`
+            SELECT batchId
+            FROM payout_batches
+            WHERE state = 'confirmed'
+            ORDER BY confirmedAt ASC, batchId ASC
+        `).all().map(
+            (row) =>
+                this.getBatch(
+                    row.batchId
+                )
+        );
+    }
+
+
+    getIntegrityState() {
+
+        const row =
+            this.db.prepare(`
+                SELECT
+                    halted,
+                    reason,
+                    batchId,
+                    txSignature,
+                    evidenceJson,
+                    detectedAt
+                FROM payout_integrity_state
+                WHERE singleton = 1
+            `).get();
+
+        if (!row) {
+            throw new Error(
+                "Brak payout_integrity_state"
+            );
+        }
+
+        let evidence = null;
+
+        if (row.evidenceJson) {
+
+            try {
+                evidence =
+                    JSON.parse(
+                        row.evidenceJson
+                    );
+            } catch {
+
+                /*
+                 * Sam uszkodzony audit payload NIE moze
+                 * wyzerowac lub ominac halta.
+                 */
+                evidence = {
+                    parseError: true
+                };
+            }
+        }
+
+        return {
+            halted:
+                Number(
+                    row.halted
+                ) === 1,
+
+            reason:
+                row.reason || null,
+
+            batchId:
+                row.batchId || null,
+
+            txSignature:
+                row.txSignature || null,
+
+            evidence,
+
+            detectedAt:
+                row.detectedAt === null ||
+                row.detectedAt === undefined
+                    ? null
+                    : Number(
+                        row.detectedAt
+                    )
+        };
+    }
+
+
+    tripIntegrityHalt({
+        reason,
+        batchId,
+        txSignature = null,
+        evidence = null
+    }) {
+
+        if (
+            typeof reason !==
+                "string" ||
+            reason.length === 0
+        ) {
+            throw new Error(
+                "Brak przyczyny payout integrity halt"
+            );
+        }
+
+        if (
+            typeof batchId !==
+                "string" ||
+            batchId.length === 0
+        ) {
+            throw new Error(
+                "Brak batchId payout integrity halt"
+            );
+        }
+
+        return this._transaction(
+            () => {
+
+                const current =
+                    this.getIntegrityState();
+
+                /*
+                 * Pierwszy incident zostaje zachowany.
+                 * Kolejne procesy/restarty nie nadpisuja
+                 * pierwotnego dowodu.
+                 */
+                if (current.halted) {
+                    return current;
+                }
+
+                const detectedAt =
+                    Date.now();
+
+                const evidenceJson =
+                    JSON.stringify(
+                        evidence
+                    );
+
+                const result =
+                    this.db.prepare(`
+                        UPDATE payout_integrity_state
+                        SET
+                            halted = 1,
+                            reason = ?,
+                            batchId = ?,
+                            txSignature = ?,
+                            evidenceJson = ?,
+                            detectedAt = ?
+                        WHERE
+                            singleton = 1
+                            AND halted = 0
+                    `).run(
+                        reason,
+                        batchId,
+                        txSignature,
+                        evidenceJson,
+                        detectedAt
+                    );
+
+                if (
+                    Number(
+                        result.changes
+                    ) !== 1
+                ) {
+                    throw new Error(
+                        "Nie udalo sie zapisac payout integrity halt"
+                    );
+                }
+
+                return this
+                    .getIntegrityState();
+            }
+        );
+    }
+
+    auditConfirmedIntegrity() {
+
+        const currentIntegrity =
+            this.getIntegrityState();
+
+        if (currentIntegrity.halted) {
+
+            return {
+                ok: false,
+                checked: 0,
+                integrity:
+                    currentIntegrity,
+                incident: null
+            };
+        }
+
+
+        const countRow =
+            this.db.prepare(`
+                SELECT COUNT(*) AS count
+                FROM payout_batches
+                WHERE state = 'confirmed'
+            `).get();
+
+
+        const checked =
+            Number(
+                countRow &&
+                countRow.count
+            ) || 0;
+
+
+        if (checked === 0) {
+
+            return {
+                ok: true,
+                checked,
+                integrity:
+                    currentIntegrity,
+                incident: null
+            };
+        }
+
+
+        const tipRow =
+            this.db.prepare(`
+                SELECT MAX(height) AS tipHeight
+                FROM blocks
+            `).get();
+
+
+        const tipHeight =
+            tipRow &&
+            tipRow.tipHeight !== null &&
+            tipRow.tipHeight !== undefined
+                ? Number(
+                    tipRow.tipHeight
+                )
+                : -1;
+
+
+        /*
+         * Szukamy tylko pierwszego naruszenia.
+         *
+         * idx_payout_state ogranicza payout_batches do confirmed,
+         * idx_tx_signature obsluguje join po podpisie.
+         *
+         * MIN(blockHeight) jest defensywne wobec ewentualnego
+         * zduplikowania podpisu w danych.
+         */
+        const failure =
+            this.db.prepare(`
+                SELECT
+                    pb.batchId,
+                    pb.txSignature,
+                    MIN(tx.blockHeight) AS blockHeight
+                FROM payout_batches AS pb
+                LEFT JOIN transactions AS tx
+                    ON tx.signature =
+                        pb.txSignature
+                WHERE
+                    pb.state =
+                        'confirmed'
+                GROUP BY
+                    pb.batchId
+                HAVING
+                    pb.txSignature IS NULL
+                    OR MIN(tx.blockHeight) IS NULL
+                    OR (
+                        ? -
+                        MIN(tx.blockHeight) +
+                        1
+                    ) < ?
+                ORDER BY
+                    pb.confirmedAt ASC,
+                    pb.batchId ASC
+                LIMIT 1
+            `).get(
+                tipHeight,
+                this.minConfirmations
+            );
+
+
+        if (!failure) {
+
+            return {
+                ok: true,
+                checked,
+                integrity:
+                    currentIntegrity,
+                incident: null
+            };
+        }
+
+
+        const txSignature =
+            failure.txSignature ||
+            null;
+
+
+        const evidence =
+            txSignature
+                ? this.getEvidence(
+                    txSignature
+                )
+                : null;
+
+
+        const reason =
+            txSignature
+                ? "CONFIRMED_PAYOUT_LOST_FINALITY"
+                : "CONFIRMED_PAYOUT_MISSING_SIGNATURE";
+
+
+        const integrity =
+            this.tripIntegrityHalt({
+                reason,
+
+                batchId:
+                    failure.batchId,
+
+                txSignature,
+
+                evidence
+            });
+
+
+        return {
+            ok: false,
+            checked,
+            integrity,
+
+            incident: {
+                batchId:
+                    failure.batchId,
+
+                txSignature,
+
+                evidence
+            }
+        };
+    }
+
 
     attachCandidate(
         batchId,
