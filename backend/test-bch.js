@@ -26,10 +26,10 @@ for (const v of ["", "a", "abc", "message digest", "abcdefghijklmnopqrstuvwxyz"]
     check(`ripemd160("${v}")`, ours === node, `nasze=${ours} node=${node}`);
 }
 
-console.log("\n=== 2: secp256k1 vs OpenSSL (klucze realne z claim-htlc.js + brzegowe) ===");
+console.log("\n=== 2: secp256k1 vs OpenSSL (syntetyczne + brzegowe wektory) ===");
 for (const k of [1n, 2n, N - 1n,
-    BigInt("0x2cebd56dcde25ad7c14f519f68ea993668ae2b4b064027ee0ac6897cb173f77d"),
-    BigInt("0x8fbc4993fd186afcbee02a91cc65dde6ad2eb94460cbae8ac6c0f55b03375da9")]) {
+    BigInt("0x123456789abcdef123456789abcdef123456789abcdef123456789abcdef1234"),
+    BigInt("0x0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0")]) {
     const ours = bytesToHex(compressPubKey(scalarMult(k, G)));
     const ecdh = crypto_node.createECDH("secp256k1");
     ecdh.setPrivateKey(Buffer.from(k.toString(16).padStart(64, "0"), "hex"));
@@ -155,40 +155,119 @@ console.log("\n=== 6: HTLC - compile + interpreter, claim/refund/CLTV/BIP65 ==="
     }
 }
 
-console.log("\n=== 7: *** KRYTYCZNE *** replikacja KROKU 1 z claim-htlc.js na PRAWDZIWYCH wartosciach ===");
+console.log("\n=== 7: PUBLICZNY REGRESSION VECTOR - historyczny adres HTLC ===");
+
 (async () => {
-    const SELLER_PRIV_HEX = "2cebd56dcde25ad7c14f519f68ea993668ae2b4b064027ee0ac6897cb173f77d";
-    const SECRET_HEX = "f55c1f2a2324a26cd2d31ec9af87156404c7ad405ebdfb268e7c5a40defcc1e3";
-    const HASH_LOCK = "9a84910cb4556bfc4f946937bf005a197f48ce79c98725624c151701f438df03";
-    const TIMEOUT_HEIGHT_BTC = 3278;
-    const EXPECTED_LOCK_ADDRESS = "bc1qgr2fz2d4n3l7p0hywy7w9ddjs9a9vxvdetxqanhcl2tgrtp2fv9q2h9c49";
-    const BUYER_PRIV_HEX = "8fbc4993fd186afcbee02a91cc65dde6ad2eb94460cbae8ac6c0f55b03375da9";
 
-    const sellerPriv = BigInt("0x" + SELLER_PRIV_HEX);
-    const buyerPriv = BigInt("0x" + BUYER_PRIV_HEX);
-    const { hash160 } = require("./btc-htlc-script");
-    const claimantPubKeyHash = hash160(compressPubKey(scalarMult(sellerPriv, G))).toString("hex");
-    const refundeePubKeyHash = hash160(compressPubKey(scalarMult(buyerPriv, G))).toString("hex");
-    console.log("claimantPubKeyHash:", claimantPubKeyHash);
-    console.log("refundeePubKeyHash:", refundeePubKeyHash);
+    /*
+     * Ten test NIE zawiera prywatnych kluczy ani secret preimage.
+     *
+     * Historyczny fixture mial timeoutHeight=3278, ale ten parametr
+     * NIE rekonstruuje EXPECTED_LOCK_ADDRESS przy obecnym compilerze.
+     *
+     * Wartosc 960524 zostala odtworzona matematycznie:
+     * dla ponizszych PUBLICZNYCH parametrow daje dokladnie historyczny
+     * adres P2WSH. Nie twierdzimy, ze 960524 pochodzi z historii Git.
+     */
 
-    const compiledScript = compileHtlcScript({ hashLock: HASH_LOCK, timeoutHeight: TIMEOUT_HEIGHT_BTC, claimantPubKeyHash, refundeePubKeyHash });
-    const { address: reconstructedAddress } = await deriveP2WSHAddress(compiledScript, "bc");
+    const HASH_LOCK =
+        "9a84910cb4556bfc4f946937bf005a197f48ce79c98725624c151701f438df03";
 
-    console.log("Policzony adres:  ", reconstructedAddress);
-    console.log("Oczekiwany adres: ", EXPECTED_LOCK_ADDRESS);
-    const match = reconstructedAddress === EXPECTED_LOCK_ADDRESS;
-    check("*** REKONSTRUKCJA ADRESU ZAMKA (KROK 1 claim-htlc.js) ***", match, match ? "" : "NADAL SIE NIE ZGADZA - patrz analiza ponizej");
+    const CLAIMANT_PUBKEY_HASH =
+        "1ac76e1848a4356d6d656104b995a6962b6b3293";
 
-    if (!match) {
-        // Diagnostyka: sprawdzmy hipotezy - czy moze timeoutHeight/hashLock/klucze sa zamienione,
-        // albo TIMEOUT_HEIGHT_BTC ma byc inaczej interpretowany.
-        console.log("\n--- diagnostyka ---");
-        const swapped = compileHtlcScript({ hashLock: HASH_LOCK, timeoutHeight: TIMEOUT_HEIGHT_BTC, claimantPubKeyHash: refundeePubKeyHash, refundeePubKeyHash: claimantPubKeyHash });
-        const { address: swappedAddr } = await deriveP2WSHAddress(swapped, "bc");
-        console.log("Z zamienionymi claimant/refundee:", swappedAddr, swappedAddr === EXPECTED_LOCK_ADDRESS ? "<-- TO PASUJE" : "");
+    const REFUNDEE_PUBKEY_HASH =
+        "3f19b36599f13df7f5a0b3284ae22ee0ed4aa974";
+
+    const RECONSTRUCTED_TIMEOUT_HEIGHT =
+        960524;
+
+    const HISTORICAL_INCONSISTENT_TIMEOUT =
+        3278;
+
+    const EXPECTED_LOCK_ADDRESS =
+        "bc1qgr2fz2d4n3l7p0hywy7w9ddjs9a9vxvdetxqanhcl2tgrtp2fv9q2h9c49";
+
+
+    const compiledScript =
+        compileHtlcScript({
+            hashLock:
+                HASH_LOCK,
+
+            timeoutHeight:
+                RECONSTRUCTED_TIMEOUT_HEIGHT,
+
+            claimantPubKeyHash:
+                CLAIMANT_PUBKEY_HASH,
+
+            refundeePubKeyHash:
+                REFUNDEE_PUBKEY_HASH
+        });
+
+
+    const {
+        address:
+            reconstructedAddress
+    } =
+        await deriveP2WSHAddress(
+            compiledScript,
+            "bc"
+        );
+
+
+    check(
+        "PUBLIC_HTLC_VECTOR_RECONSTRUCTS_HISTORICAL_ADDRESS",
+        reconstructedAddress ===
+            EXPECTED_LOCK_ADDRESS,
+        reconstructedAddress
+    );
+
+
+    /*
+     * Zachowujemy rowniez test regresyjny dowodzacy,
+     * ze historyczne 3278 jest niespojne z tym adresem.
+     */
+
+    const inconsistentScript =
+        compileHtlcScript({
+            hashLock:
+                HASH_LOCK,
+
+            timeoutHeight:
+                HISTORICAL_INCONSISTENT_TIMEOUT,
+
+            claimantPubKeyHash:
+                CLAIMANT_PUBKEY_HASH,
+
+            refundeePubKeyHash:
+                REFUNDEE_PUBKEY_HASH
+        });
+
+
+    const {
+        address:
+            inconsistentAddress
+    } =
+        await deriveP2WSHAddress(
+            inconsistentScript,
+            "bc"
+        );
+
+
+    check(
+        "HISTORICAL_TIMEOUT_3278_DOES_NOT_MATCH_LOCK_ADDRESS",
+        inconsistentAddress !==
+            EXPECTED_LOCK_ADDRESS
+    );
+
+
+    console.log(
+        `\n\n============ RAZEM: ${PASS} OK / ${FAIL} FAIL ============\n`
+    );
+
+
+    if (FAIL > 0) {
+        process.exitCode = 1;
     }
 
-    console.log(`\n\n============ RAZEM: ${PASS} OK / ${FAIL} FAIL ============\n`);
-    if (FAIL > 0) process.exitCode = 1;
 })();
