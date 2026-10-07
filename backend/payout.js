@@ -351,6 +351,9 @@ async function main(
                 minPayout:
                     payoutMinimum,
                 maxSinglePayout,
+                minConfirmations:
+                    options.minConfirmations ??
+                    CONFIG.PAYOUT_MIN_CONFIRMATIONS,
                 submitFn:
                     options.submitFn,
                 now:

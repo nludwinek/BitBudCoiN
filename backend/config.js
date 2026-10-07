@@ -55,6 +55,14 @@ module.exports = {
     BLOCK_TIME: 480,
     BLOCK_REWARD: 50,
 
+    /*
+     * Pool payout finality.
+     *
+     * Przy docelowych 8 min/blok:
+     * 12 potwierdzen ~= 96 minut.
+     */
+    PAYOUT_MIN_CONFIRMATIONS: 12,
+
     HALVING_INTERVAL: 210000,
 
     /*

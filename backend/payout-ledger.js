@@ -1,13 +1,38 @@
 "use strict";
 
 class PayoutLedger {
-    constructor(storage) {
+    constructor(
+        storage,
+        {
+            minConfirmations = 1
+        } = {}
+    ) {
         if (!storage || !storage.db) {
             throw new Error("PayoutLedger wymaga Storage z aktywna baza");
         }
 
         this.storage = storage;
         this.db = storage.db;
+
+        const parsedMinConfirmations =
+            Number(
+                minConfirmations
+            );
+
+        if (
+            !Number.isInteger(
+                parsedMinConfirmations
+            ) ||
+            parsedMinConfirmations < 1 ||
+            parsedMinConfirmations > 100000
+        ) {
+            throw new Error(
+                "Nieprawidlowa liczba potwierdzen payout"
+            );
+        }
+
+        this.minConfirmations =
+            parsedMinConfirmations;
 
         this._initSchema();
     }
@@ -726,10 +751,17 @@ class PayoutLedger {
     }
 
     getEvidence(signature) {
+
         if (!signature) {
             return {
                 pending: false,
-                confirmed: false
+                included: false,
+                confirmed: false,
+                confirmations: 0,
+                requiredConfirmations:
+                    this.minConfirmations,
+                blockHeight: null,
+                tipHeight: null
             };
         }
 
@@ -741,17 +773,78 @@ class PayoutLedger {
                 LIMIT 1
             `).get(signature);
 
-        const confirmed =
-            !!this.db.prepare(`
-                SELECT 1
+        const tx =
+            this.db.prepare(`
+                SELECT blockHeight
                 FROM transactions
                 WHERE signature = ?
                 LIMIT 1
             `).get(signature);
 
+        const included =
+            !!tx;
+
+        let blockHeight = null;
+        let tipHeight = null;
+        let confirmations = 0;
+
+        if (included) {
+
+            blockHeight =
+                Number(
+                    tx.blockHeight
+                );
+
+            const tip =
+                this.db.prepare(`
+                    SELECT MAX(height) AS tipHeight
+                    FROM blocks
+                `).get();
+
+            if (
+                tip &&
+                tip.tipHeight !== null &&
+                tip.tipHeight !== undefined
+            ) {
+
+                tipHeight =
+                    Number(
+                        tip.tipHeight
+                    );
+
+                if (
+                    Number.isInteger(
+                        blockHeight
+                    ) &&
+                    Number.isInteger(
+                        tipHeight
+                    ) &&
+                    tipHeight >=
+                        blockHeight
+                ) {
+
+                    confirmations =
+                        tipHeight -
+                        blockHeight +
+                        1;
+                }
+            }
+        }
+
+        const confirmed =
+            included &&
+            confirmations >=
+                this.minConfirmations;
+
         return {
             pending,
-            confirmed
+            included,
+            confirmed,
+            confirmations,
+            requiredConfirmations:
+                this.minConfirmations,
+            blockHeight,
+            tipHeight
         };
     }
 
@@ -995,6 +1088,7 @@ class PayoutLedger {
 
             if (
                 evidence.pending ||
+                evidence.included ||
                 evidence.confirmed
             ) {
                 throw new Error(
