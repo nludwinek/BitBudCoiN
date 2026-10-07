@@ -569,34 +569,27 @@ class PayoutEngine {
             };
         }
 
-        if (
-            outcome &&
-            outcome.kind ===
-                "rejected"
-        ) {
-            const failed =
-                this.ledger
-                    .rejectSubmitted(
-                        current.batchId,
-                        outcome.reason ||
-                            "definitive-rejection"
-                    );
-
-            return {
-                status:
-                    "failed",
-                batch:
-                    failed,
-                outcome
-            };
-        }
-
         /*
-         * accepted bez lokalnego evidence, 429, 5xx, timeout,
-         * zerwane polaczenie albo odpowiedz "duplicate":
-         * NIE zwalniamy kredytow.
+         * FAIL-CLOSED DLA PODPISANEGO PAYOUTU:
          *
-         * Nie wiemy bezpiecznie, czy transakcja zostala przyjeta.
+         * Od chwili, gdy candidate zostal podpisany i batch ma stan
+         * submitted, ZADNA odpowiedz HTTP sama w sobie nie zwalnia
+         * zarezerwowanych credits.
+         *
+         * Dotyczy to rowniez:
+         * - HTTP 400,
+         * - accepted:false,
+         * - duplicate,
+         * - 429 / 5xx,
+         * - timeout,
+         * - zerwanego polaczenia.
+         *
+         * HTTP opisuje tylko wynik konkretnej proby requestu.
+         * Nie jest autorytatywnym dowodem, ze ta podpisana transakcja
+         * nie istnieje i nie moze pojawic sie w lokalnym stanie.
+         *
+         * Automatyczny flow pozostawia batch jako submitted.
+         * Ewentualne zwolnienie wymaga osobnego, jawnego reconciliation.
          */
         return {
             status:

@@ -546,9 +546,47 @@ let storage = null;
                     1000
                 );
 
+        /*
+         * HTTP rejection NIE jest dowodem finalnym.
+         *
+         * Candidate jest juz podpisany i batch submitted,
+         * dlatego credits musza pozostac przypiete do TEGO
+         * samego batcha.
+         */
         assert.equal(
             rejected.status,
-            "failed"
+            "submitted"
+        );
+
+        assert.equal(
+            rejected.outcome.kind,
+            "rejected"
+        );
+
+        const heldB =
+            ledger
+                .getActiveBatches()
+                .find(
+                    (b) =>
+                        b.minerAddress ===
+                        B
+                );
+
+        assert.ok(
+            heldB
+        );
+
+        assert.equal(
+            heldB.state,
+            "submitted"
+        );
+
+        assert.ok(
+            heldB.txSignature
+        );
+
+        assert.ok(
+            heldB.candidate
         );
 
         const creditB =
@@ -567,11 +605,49 @@ let storage = null;
 
         assert.equal(
             creditB.payoutBatchId,
-            null
+            heldB.batchId
         );
 
         pass(
-            "DEFINITIVE_REJECTION_RELEASES_CREDITS"
+            "HTTP_REJECTION_HOLDS_SIGNED_CREDITS"
+        );
+
+        /*
+         * Tylko porzadkowanie stanu TEGO testu.
+         *
+         * To jest jawne, bezposrednie wywolanie ledger API,
+         * nie automatyczna decyzja na podstawie HTTP.
+         * Potrzebne, zeby kolejne scenariusze w tym samym
+         * pliku zaczynaly bez aktywnego batcha B.
+         */
+        const cleanedB =
+            ledger.rejectSubmitted(
+                heldB.batchId,
+                "TEST_CLEANUP_ONLY"
+            );
+
+        assert.equal(
+            cleanedB.state,
+            "failed"
+        );
+
+        const cleanedCreditB =
+            storage.db.prepare(`
+                SELECT
+                    paid,
+                    payoutBatchId
+                FROM pool_credits
+                WHERE minerAddress = ?
+            `).get(B);
+
+        assert.equal(
+            cleanedCreditB.paid,
+            0
+        );
+
+        assert.equal(
+            cleanedCreditB.payoutBatchId,
+            null
         );
 
 
