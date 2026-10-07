@@ -1,5 +1,5 @@
 const path=require("path"), Module=require("module");
-const B="/home/claude/repo/BitBudCoiN-main/backend";
+const B=__dirname;
 let PRE=[];
 class FS{constructor(){this.blocks=PRE.slice();}hasBlocks(){return PRE.length>0;}
 loadChain(){return PRE.slice();}loadMempool(){return[];}saveBlock(b){this.blocks.push(b);}
@@ -76,6 +76,33 @@ console.log("replaceChain z 5 coinbase:");
 console.log("  przyjety :", w4.accepted, w4.reason||"");
 
 console.log("");
-console.log((w.accepted===false||true) && w2.accepted && !w3.accepted && !w4.accepted
-  ? ">> NAPRAWA DZIALA - jedna przechodzi, piec i zero odrzucone"
-  : "!! SPRAWDZ WYNIKI");
+
+const checks = [
+  ["FIVE_COINBASE_REJECTED", w.accepted === false],
+  ["ONE_COINBASE_ACCEPTED", w2.accepted === true],
+  ["ONE_COINBASE_BALANCE_50", chain2.getBalance(G.address) === 50],
+  ["ZERO_COINBASE_REJECTED", w3.accepted === false],
+  ["REPLACECHAIN_FIVE_COINBASE_REJECTED", w4.accepted === false]
+];
+
+let failed = 0;
+
+for (const [name, ok] of checks) {
+  if (ok) {
+    console.log("PASS", name);
+  } else {
+    failed++;
+    console.error("FAIL", name);
+  }
+}
+
+console.log("");
+console.log(
+  "RESULT COINBASE:",
+  (checks.length - failed) + "/" + checks.length,
+  "PASS"
+);
+
+if (failed > 0) {
+  process.exitCode = 1;
+}
