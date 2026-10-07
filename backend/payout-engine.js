@@ -216,6 +216,7 @@ class PayoutEngine {
         fee,
         minPayout = 1,
         maxSinglePayout,
+        minConfirmations = 1,
         submitFn,
         now = () => Date.now(),
         sleepFn =
@@ -316,7 +317,10 @@ class PayoutEngine {
 
         this.ledger =
             new PayoutLedger(
-                storage
+                storage,
+                {
+                    minConfirmations
+                }
             );
 
         this.referral =
@@ -461,7 +465,9 @@ class PayoutEngine {
                 )
                 : {
                     pending: false,
-                    confirmed: false
+                    included: false,
+                    confirmed: false,
+                    confirmations: 0
                 };
 
         if (
@@ -470,6 +476,34 @@ class PayoutEngine {
             return this._finalizeIfConfirmed(
                 current
             );
+        }
+
+        /*
+         * Jest juz w canonical chain, ale nie ma wymaganej
+         * liczby potwierdzen. Nie wysylamy jej ponownie.
+         */
+        if (
+            preEvidence.included
+        ) {
+
+            if (
+                current.state ===
+                "reserved"
+            ) {
+                current =
+                    this.ledger
+                        .markSubmitted(
+                            current.batchId
+                        );
+            }
+
+            return {
+                status:
+                    "confirming",
+                batch: current,
+                evidence:
+                    preEvidence
+            };
         }
 
         if (
@@ -554,6 +588,19 @@ class PayoutEngine {
             return this._finalizeIfConfirmed(
                 current
             );
+        }
+
+        if (
+            postEvidence.included
+        ) {
+            return {
+                status:
+                    "confirming",
+                batch: current,
+                outcome,
+                evidence:
+                    postEvidence
+            };
         }
 
         if (

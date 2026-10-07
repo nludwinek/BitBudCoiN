@@ -287,6 +287,7 @@ cleanup();
                         poolAddress,
                     delayMs: 0,
                     log: false,
+                    minConfirmations: 1,
                     submitFn:
                         async (
                             candidate
@@ -458,6 +459,7 @@ cleanup();
                         poolAddress,
                     delayMs: 0,
                     log: false,
+                    minConfirmations: 1,
                     submitFn:
                         async () => {
                             secondNetworkCalls++;
