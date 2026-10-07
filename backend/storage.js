@@ -229,6 +229,98 @@ class Storage {
         }
     }
 
+
+    /*
+     * Atomowa podmiana calego lancucha uzywana przez replaceChain().
+     *
+     * Kolejnosc DELETE jest celowa:
+     * transactions.blockHeight ma FK do blocks.height.
+     *
+     * Nie dotykamy tutaj mempool/pool_credits ani innych tabel.
+     * Ta metoda odpowiada wyłącznie za trwały canonical chain.
+     */
+    replaceAllBlocks(chain) {
+
+        if (
+            !Array.isArray(chain) ||
+            chain.length === 0
+        ) {
+            throw new Error(
+                "Nieprawidlowy lancuch do zapisu"
+            );
+        }
+
+        this.db.exec(
+            "BEGIN IMMEDIATE"
+        );
+
+        try {
+
+            this.db.exec(
+                "DELETE FROM transactions"
+            );
+
+            this.db.exec(
+                "DELETE FROM blocks"
+            );
+
+            for (const block of chain) {
+
+                if (
+                    !block ||
+                    !Array.isArray(
+                        block.transactions
+                    )
+                ) {
+                    throw new Error(
+                        "Nieprawidlowy blok w lancuchu"
+                    );
+                }
+
+                this._insertBlock.run(
+                    block.height,
+                    block.timestamp,
+                    block.previousHash,
+                    block.hash,
+                    block.nonce,
+                    block.difficulty
+                );
+
+                for (
+                    const tx of
+                    block.transactions
+                ) {
+
+                    this._insertTx.run(
+                        block.height,
+                        tx.from ?? null,
+                        tx.to,
+                        tx.amount,
+                        tx.type,
+                        tx.fee ?? null,
+                        tx.timestamp ?? null,
+                        tx.publicKey ?? null,
+                        tx.signature ?? null
+                    );
+                }
+            }
+
+            this.db.exec(
+                "COMMIT"
+            );
+
+        } catch (err) {
+
+            try {
+                this.db.exec(
+                    "ROLLBACK"
+                );
+            } catch {}
+
+            throw err;
+        }
+    }
+
     loadChain() {
 
         // NAPRAWA (dzisiaj): PRZED - osobne zapytanie SQL per blok
