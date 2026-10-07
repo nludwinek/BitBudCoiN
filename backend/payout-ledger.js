@@ -916,6 +916,29 @@ class PayoutLedger {
                 );
             }
 
+            /*
+             * CRASH WINDOW:
+             *
+             * attachCandidate() zapisuje podpisana transakcje, a dopiero
+             * nastepny krok markSubmitted() zmienia stan na submitted.
+             *
+             * Jezeli proces padnie pomiedzy tymi operacjami, batch moze
+             * byc nadal "reserved", ale posiada juz trwaly candidate/signature.
+             *
+             * Takiego batcha NIE wolno zwolnic przez fail(), bo po restarcie
+             * recovery musi uzyc DOKLADNIE tej samej podpisanej transakcji.
+             *
+             * fail() jest bezpieczne tylko dla unsigned reserved batch.
+             */
+            if (
+                batch.txSignature ||
+                batch.candidate
+            ) {
+                throw new Error(
+                    "Nie mozna zwolnic podpisanego reserved batch; wymagane recovery transakcji"
+                );
+            }
+
             this.db.prepare(`
                 UPDATE pool_credits
                 SET payoutBatchId = NULL
