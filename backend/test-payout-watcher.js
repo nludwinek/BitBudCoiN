@@ -102,6 +102,7 @@ runCase(
         const wake =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -133,6 +134,7 @@ runCase(
         const wake =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -168,6 +170,7 @@ runCase(
         const wake =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -239,6 +242,7 @@ runCase(
         const wake =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -297,10 +301,11 @@ runCase(
                 createdAt,
                 confirmedAt,
                 wasFirstPayout,
-                referralProcessed
+                referralProcessed,
+                txSignature
             )
             VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
             "watch-referral-1",
             "current",
@@ -313,8 +318,47 @@ runCase(
             2000,
             3000,
             1,
-            0
+            0,
+            "watch-referral-signature"
         );
+
+
+        /*
+         * Ten fixture reprezentuje prawdziwie confirmed payout.
+         *
+         * getWakeState(..., 1, 1) wymaga tylko jednej
+         * confirmation, wiec block 0 wystarcza.
+         */
+        storage.saveBlock({
+            height: 0,
+            timestamp: 3000,
+            previousHash:
+                "0".repeat(64),
+            hash:
+                "a".repeat(64),
+            nonce: 0,
+            difficulty: 1,
+            transactions: [
+                {
+                    from:
+                        POOL,
+                    to:
+                        A,
+                    amount:
+                        1,
+                    type:
+                        "transfer",
+                    fee:
+                        0.01,
+                    timestamp:
+                        2000,
+                    publicKey:
+                        "TEST_PUBLIC_KEY",
+                    signature:
+                        "watch-referral-signature"
+                }
+            ]
+        });
 
         assert.equal(
             storage
@@ -326,6 +370,7 @@ runCase(
         const wake =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -347,6 +392,7 @@ runCase(
         const after =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -390,6 +436,7 @@ runCase(
         const below =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -409,6 +456,7 @@ runCase(
         const ready =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -457,6 +505,7 @@ runCase(
         const before =
             getWakeState(
                 storage,
+                1,
                 1
             );
 
@@ -480,6 +529,7 @@ runCase(
         const after =
             getWakeState(
                 storage,
+                1,
                 1
             );
 

@@ -407,6 +407,94 @@ class PayoutEngine {
             );
     }
 
+    _integrityError(
+        state
+    ) {
+
+        const reason =
+            state &&
+            state.reason
+                ? state.reason
+                : "UNKNOWN_INTEGRITY_FAILURE";
+
+        const err =
+            new Error(
+                "PAYOUT_INTEGRITY_HALT: " +
+                reason
+            );
+
+        err.code =
+            "PAYOUT_INTEGRITY_HALT";
+
+        err.integrityState =
+            state || null;
+
+        return err;
+    }
+
+
+    _assertNotHalted() {
+
+        const state =
+            this.ledger
+                .getIntegrityState();
+
+        if (state.halted) {
+            throw this
+                ._integrityError(
+                    state
+                );
+        }
+
+        return state;
+    }
+
+
+    _tripIntegrityHalt(
+        batch,
+        evidence,
+        reason
+    ) {
+
+        const state =
+            this.ledger
+                .tripIntegrityHalt({
+                    reason,
+
+                    batchId:
+                        batch.batchId,
+
+                    txSignature:
+                        batch.txSignature ||
+                        null,
+
+                    evidence
+                });
+
+        throw this
+            ._integrityError(
+                state
+            );
+    }
+
+
+    auditConfirmedIntegrity() {
+
+        const audit =
+            this.ledger
+                .auditConfirmedIntegrity();
+
+        if (!audit.ok) {
+
+            throw this
+                ._integrityError(
+                    audit.integrity
+                );
+        }
+
+        return audit;
+    }
+
     _finalizeIfConfirmed(
         batch
     ) {
@@ -436,6 +524,9 @@ class PayoutEngine {
     async resolveBatch(
         batch
     ) {
+
+        this._assertNotHalted();
+
         let current =
             this.ledger.getBatch(
                 batch.batchId
@@ -451,10 +542,38 @@ class PayoutEngine {
             current.state ===
             "confirmed"
         ) {
+
+            if (!current.txSignature) {
+
+                this._tripIntegrityHalt(
+                    current,
+                    null,
+                    "CONFIRMED_PAYOUT_MISSING_SIGNATURE"
+                );
+            }
+
+            const confirmedEvidence =
+                this._evidence(
+                    current
+                );
+
+            if (
+                !confirmedEvidence.confirmed
+            ) {
+
+                this._tripIntegrityHalt(
+                    current,
+                    confirmedEvidence,
+                    "CONFIRMED_PAYOUT_LOST_FINALITY"
+                );
+            }
+
             return {
                 status:
                     "confirmed",
-                batch: current
+                batch: current,
+                evidence:
+                    confirmedEvidence
             };
         }
 
@@ -649,6 +768,9 @@ class PayoutEngine {
     }
 
     async recoverActive() {
+
+        this._assertNotHalted();
+
         const active =
             this.ledger
                 .getActiveBatches();
@@ -669,6 +791,9 @@ class PayoutEngine {
     }
 
     async processReferralPending() {
+
+        this._assertNotHalted();
+
         const pending =
             this.ledger
                 .getReferralPending();
@@ -709,6 +834,9 @@ class PayoutEngine {
         minerAddress,
         cutoffMs
     ) {
+
+        this._assertNotHalted();
+
         if (
             !ADDRESS_FORMAT.test(
                 minerAddress
@@ -777,6 +905,8 @@ class PayoutEngine {
         cutoffMs,
         maxAmount
     ) {
+        this._assertNotHalted();
+
         if (
             !ADDRESS_FORMAT.test(
                 minerAddress
@@ -950,6 +1080,16 @@ class PayoutEngine {
         legacyShare,
         minLegacyPayout
     }) {
+
+        /*
+         * MUST BE FIRST:
+         * zanim recovery moze wykonac rebroadcast,
+         * zanim referral zostanie zakredytowany,
+         * zanim budzet zostanie naliczony
+         * i zanim powstanie nowy payout.
+         */
+        this.auditConfirmedIntegrity();
+
         const recovered =
             await this.recoverActive();
 

@@ -75,7 +75,9 @@ function validMinerAddress(address) {
 function getWakeState(
     storage,
     minPayout =
-        DEFAULT_MIN_PAYOUT
+        DEFAULT_MIN_PAYOUT,
+    minConfirmations =
+        CONFIG.PAYOUT_MIN_CONFIRMATIONS
 ) {
     if (!storage || !storage.db) {
         throw new Error(
@@ -90,8 +92,41 @@ function getWakeState(
 
     const ledger =
         new PayoutLedger(
-            storage
+            storage,
+            {
+                minConfirmations
+            }
         );
+
+    /*
+     * Watcher aktywnie sprawdza confirmed payouts nawet wtedy,
+     * gdy nie ma nowych credits, referral ani active batch.
+     *
+     * Przy naruszeniu finality zapisuje trwaly halt,
+     * ale NIE uruchamia payout.js i NIE dotyka paid credits.
+     */
+    const integrityAudit =
+        ledger.auditConfirmedIntegrity();
+
+    const integrity =
+        integrityAudit.integrity;
+
+    if (integrity.halted) {
+
+        return {
+            shouldRun: false,
+            integrityHalted: true,
+            integrity,
+            integrityAudit,
+            activeBatches: 0,
+            pendingReferrals: 0,
+            bootstrapUnpaid: 0,
+            currentReady: 0,
+            legacyDebtAddresses: 0,
+            legacyReady: 0,
+            newLegacyBlocks: 0
+        };
+    }
 
     const active =
         ledger.getActiveBatches();
@@ -203,6 +238,9 @@ function getWakeState(
     }
 
     const result = {
+        integrityHalted: false,
+        integrity,
+        integrityAudit,
         shouldRun:
             active.length > 0 ||
             referrals.length > 0 ||
@@ -270,6 +308,20 @@ function checkAndPayout({
 
         storage.close();
         storage = null;
+
+        if (wake.integrityHalted) {
+
+            console.error(
+                "[" +
+                new Date().toISOString() +
+                "] CRITICAL PAYOUT INTEGRITY HALT: " +
+                JSON.stringify(
+                    wake.integrity
+                )
+            );
+
+            return false;
+        }
 
         if (!wake.shouldRun) {
             return false;
