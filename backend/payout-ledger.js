@@ -838,93 +838,143 @@ class PayoutLedger {
         }
 
 
-        const countRow =
-            this.db.prepare(`
-                SELECT COUNT(*) AS count
-                FROM payout_batches
-                WHERE state = 'confirmed'
-            `).get();
-
-
-        const checked =
-            Number(
-                countRow &&
-                countRow.count
-            ) || 0;
-
-
-        if (checked === 0) {
-
-            return {
-                ok: true,
-                checked,
-                integrity:
-                    currentIntegrity,
-                incident: null
-            };
-        }
-
-
-        const tipRow =
-            this.db.prepare(`
-                SELECT MAX(height) AS tipHeight
-                FROM blocks
-            `).get();
-
-
-        const tipHeight =
-            tipRow &&
-            tipRow.tipHeight !== null &&
-            tipRow.tipHeight !== undefined
-                ? Number(
-                    tipRow.tipHeight
-                )
-                : -1;
-
-
         /*
-         * Szukamy tylko pierwszego naruszenia.
+         * KRYTYCZNE:
          *
-         * idx_payout_state ogranicza payout_batches do confirmed,
-         * idx_tx_signature obsluguje join po podpisie.
+         * Wszystkie dane dotyczace finality musza pochodzic
+         * z JEDNEGO SQLite statement/snapshot.
          *
-         * MIN(blockHeight) jest defensywne wobec ewentualnego
-         * zduplikowania podpisu w danych.
+         * Nie wolno osobno czytac tipHeight, a potem
+         * transactions, poniewaz replaceAllBlocks() moze
+         * atomowo podmienic canonical chain pomiedzy
+         * dwoma SELECT-ami.
          */
-        const failure =
+        const auditRow =
             this.db.prepare(`
+                WITH
+                tip AS (
+                    SELECT
+                        MAX(height) AS tipHeight
+                    FROM blocks
+                ),
+
+                confirmed AS (
+                    SELECT
+                        pb.batchId,
+                        pb.txSignature,
+                        pb.confirmedAt,
+
+                        MIN(
+                            tx.blockHeight
+                        ) AS blockHeight,
+
+                        EXISTS(
+                            SELECT 1
+                            FROM mempool AS m
+                            WHERE
+                                m.signature =
+                                    pb.txSignature
+                            LIMIT 1
+                        ) AS pending
+
+                    FROM payout_batches AS pb
+
+                    LEFT JOIN transactions AS tx
+                        ON tx.signature =
+                            pb.txSignature
+
+                    WHERE
+                        pb.state =
+                            'confirmed'
+
+                    GROUP BY
+                        pb.batchId
+                ),
+
+                first_failure AS (
+                    SELECT
+                        c.batchId,
+                        c.txSignature,
+                        c.blockHeight,
+                        c.pending,
+                        tip.tipHeight,
+
+                        CASE
+                            WHEN
+                                c.blockHeight IS NULL
+                                OR tip.tipHeight IS NULL
+                                OR tip.tipHeight <
+                                    c.blockHeight
+                            THEN 0
+
+                            ELSE
+                                tip.tipHeight -
+                                c.blockHeight +
+                                1
+                        END AS confirmations
+
+                    FROM confirmed AS c
+
+                    CROSS JOIN tip
+
+                    WHERE
+                        c.txSignature IS NULL
+
+                        OR c.blockHeight IS NULL
+
+                        OR tip.tipHeight IS NULL
+
+                        OR tip.tipHeight <
+                            c.blockHeight
+
+                        OR (
+                            tip.tipHeight -
+                            c.blockHeight +
+                            1
+                        ) < ?
+
+                    ORDER BY
+                        c.confirmedAt ASC,
+                        c.batchId ASC
+
+                    LIMIT 1
+                )
+
                 SELECT
-                    pb.batchId,
-                    pb.txSignature,
-                    MIN(tx.blockHeight) AS blockHeight
-                FROM payout_batches AS pb
-                LEFT JOIN transactions AS tx
-                    ON tx.signature =
-                        pb.txSignature
-                WHERE
-                    pb.state =
-                        'confirmed'
-                GROUP BY
-                    pb.batchId
-                HAVING
-                    pb.txSignature IS NULL
-                    OR MIN(tx.blockHeight) IS NULL
-                    OR (
-                        ? -
-                        MIN(tx.blockHeight) +
-                        1
-                    ) < ?
-                ORDER BY
-                    pb.confirmedAt ASC,
-                    pb.batchId ASC
-                LIMIT 1
+                    (
+                        SELECT COUNT(*)
+                        FROM confirmed
+                    ) AS checked,
+
+                    first_failure.batchId,
+                    first_failure.txSignature,
+                    first_failure.blockHeight,
+                    first_failure.pending,
+                    first_failure.tipHeight,
+                    first_failure.confirmations
+
+                FROM (
+                    SELECT 1
+                ) AS singleton
+
+                LEFT JOIN first_failure
+                    ON 1 = 1
             `).get(
-                tipHeight,
                 this.minConfirmations
             );
 
 
-        if (!failure) {
+        const checked =
+            Number(
+                auditRow &&
+                auditRow.checked
+            ) || 0;
+
+
+        if (
+            !auditRow ||
+            !auditRow.batchId
+        ) {
 
             return {
                 ok: true,
@@ -937,15 +987,72 @@ class PayoutLedger {
 
 
         const txSignature =
-            failure.txSignature ||
+            auditRow.txSignature ||
             null;
 
 
+        const blockHeight =
+            auditRow.blockHeight !== null &&
+            auditRow.blockHeight !== undefined
+                ? Number(
+                    auditRow.blockHeight
+                )
+                : null;
+
+
+        const tipHeight =
+            auditRow.tipHeight !== null &&
+            auditRow.tipHeight !== undefined
+                ? Number(
+                    auditRow.tipHeight
+                )
+                : null;
+
+
+        const confirmations =
+            Number.isInteger(
+                Number(
+                    auditRow.confirmations
+                )
+            ) &&
+            Number(
+                auditRow.confirmations
+            ) > 0
+                ? Number(
+                    auditRow.confirmations
+                )
+                : 0;
+
+
+        /*
+         * Evidence zapisujemy z TEGO SAMEGO snapshotu,
+         * ktory wykryl utrate finality.
+         *
+         * Nie wolno tutaj ponownie wywolywac getEvidence(),
+         * bo canonical chain moglby zmienic sie miedzy
+         * detekcja a zapisaniem incidentu.
+         */
         const evidence =
             txSignature
-                ? this.getEvidence(
-                    txSignature
-                )
+                ? {
+                    pending:
+                        !!auditRow.pending,
+
+                    included:
+                        blockHeight !== null,
+
+                    confirmed:
+                        false,
+
+                    confirmations,
+
+                    requiredConfirmations:
+                        this.minConfirmations,
+
+                    blockHeight,
+
+                    tipHeight
+                }
                 : null;
 
 
@@ -960,7 +1067,7 @@ class PayoutLedger {
                 reason,
 
                 batchId:
-                    failure.batchId,
+                    auditRow.batchId,
 
                 txSignature,
 
@@ -975,7 +1082,7 @@ class PayoutLedger {
 
             incident: {
                 batchId:
-                    failure.batchId,
+                    auditRow.batchId,
 
                 txSignature,
 
@@ -983,7 +1090,6 @@ class PayoutLedger {
             }
         };
     }
-
 
     attachCandidate(
         batchId,
@@ -1117,6 +1223,7 @@ class PayoutLedger {
     getEvidence(signature) {
 
         if (!signature) {
+
             return {
                 pending: false,
                 included: false,
@@ -1129,76 +1236,103 @@ class PayoutLedger {
             };
         }
 
-        const pending =
-            !!this.db.prepare(`
-                SELECT 1
-                FROM mempool
-                WHERE signature = ?
-                LIMIT 1
-            `).get(signature);
 
-        const tx =
+        /*
+         * KRYTYCZNE:
+         *
+         * pending, blockHeight i tipHeight musza pochodzic
+         * z jednego SQLite statement/snapshot.
+         *
+         * transactions.signature nie ma UNIQUE constraint,
+         * dlatego zachowujemy defensywna semantyke MIN()
+         * uzywana rowniez przez integrity audit.
+         */
+        const snapshot =
             this.db.prepare(`
-                SELECT blockHeight
-                FROM transactions
-                WHERE signature = ?
-                LIMIT 1
-            `).get(signature);
+                SELECT
+                    EXISTS(
+                        SELECT 1
+                        FROM mempool
+                        WHERE signature = ?
+                        LIMIT 1
+                    ) AS pending,
+
+                    (
+                        SELECT
+                            MIN(blockHeight)
+                        FROM transactions
+                        WHERE signature = ?
+                    ) AS blockHeight,
+
+                    (
+                        SELECT
+                            MAX(height)
+                        FROM blocks
+                    ) AS tipHeight
+            `).get(
+                signature,
+                signature
+            );
+
+
+        const pending =
+            !!(
+                snapshot &&
+                snapshot.pending
+            );
+
 
         const included =
-            !!tx;
+            snapshot &&
+            snapshot.blockHeight !== null &&
+            snapshot.blockHeight !== undefined;
 
-        let blockHeight = null;
-        let tipHeight = null;
+
+        const blockHeight =
+            included
+                ? Number(
+                    snapshot.blockHeight
+                )
+                : null;
+
+
+        const tipHeight =
+            snapshot &&
+            snapshot.tipHeight !== null &&
+            snapshot.tipHeight !== undefined
+                ? Number(
+                    snapshot.tipHeight
+                )
+                : null;
+
+
         let confirmations = 0;
 
-        if (included) {
 
-            blockHeight =
-                Number(
-                    tx.blockHeight
-                );
+        if (
+            included &&
+            Number.isInteger(
+                blockHeight
+            ) &&
+            Number.isInteger(
+                tipHeight
+            ) &&
+            tipHeight >=
+                blockHeight
+        ) {
 
-            const tip =
-                this.db.prepare(`
-                    SELECT MAX(height) AS tipHeight
-                    FROM blocks
-                `).get();
-
-            if (
-                tip &&
-                tip.tipHeight !== null &&
-                tip.tipHeight !== undefined
-            ) {
-
-                tipHeight =
-                    Number(
-                        tip.tipHeight
-                    );
-
-                if (
-                    Number.isInteger(
-                        blockHeight
-                    ) &&
-                    Number.isInteger(
-                        tipHeight
-                    ) &&
-                    tipHeight >=
-                        blockHeight
-                ) {
-
-                    confirmations =
-                        tipHeight -
-                        blockHeight +
-                        1;
-                }
-            }
+            confirmations =
+                tipHeight -
+                blockHeight +
+                1;
         }
+
 
         const confirmed =
             included &&
             confirmations >=
                 this.minConfirmations;
+
 
         return {
             pending,

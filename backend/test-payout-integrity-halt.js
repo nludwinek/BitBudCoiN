@@ -847,15 +847,425 @@ async function main() {
         "REFERRAL_PROCESSING_BLOCKED_WHILE_HALTED"
     );
 
+    /*
+     * ========================================================
+     * Retained transaction loses confirmation depth.
+     *
+     * Payout NIE znika z canonical chain.
+     * Przed reorg:
+     *   blockHeight = 1
+     *   tipHeight   = 12
+     *   confirmations = 12
+     *
+     * Po reorg:
+     *   blockHeight = 7
+     *   tipHeight   = 12
+     *   confirmations = 6
+     *
+     * Watcher musi ustawic sticky halt i zadna sciezka
+     * payout nie moze wykonac network submit.
+     * ========================================================
+     */
+
+    const retainedDbPath =
+        path.join(
+            os.tmpdir(),
+            "bbc-integrity-retained-" +
+                process.pid +
+                "-" +
+                Date.now() +
+                ".db"
+        );
+
+    let retainedStorage = null;
+
+    try {
+
+        retainedStorage =
+            new Storage(
+                retainedDbPath
+            );
+
+
+        const retainedLedger =
+            new PayoutLedger(
+                retainedStorage,
+                {
+                    minConfirmations:
+                        12
+                }
+            );
+
+
+        retainedStorage.saveBlock(
+            makeBlock(
+                0,
+                "d"
+            )
+        );
+
+
+        retainedStorage.saveCredit({
+            minerAddress:
+                MINER,
+
+            blockHeight:
+                0,
+
+            shares:
+                1,
+
+            amount:
+                5,
+
+            timestamp:
+                2000
+        });
+
+
+        let retainedBatch =
+            retainedLedger.reserveCurrent({
+                batchId:
+                    "integrity-retained-depth-batch",
+
+                minerAddress:
+                    MINER,
+
+                fromAddress:
+                    POOL,
+
+                cutoffMs:
+                    1000,
+
+                minPayout:
+                    1,
+
+                fee:
+                    0.01,
+
+                txTimestamp:
+                    3000
+            });
+
+
+        assert.ok(
+            retainedBatch
+        );
+
+
+        const retainedTx = {
+            from:
+                POOL,
+
+            to:
+                MINER,
+
+            amount:
+                retainedBatch.amount,
+
+            type:
+                "transfer",
+
+            fee:
+                0.01,
+
+            timestamp:
+                3000,
+
+            publicKey:
+                "TEST_PUBLIC_KEY",
+
+            signature:
+                "RETAINED_DEPTH_SIGNATURE"
+        };
+
+
+        retainedBatch =
+            retainedLedger.attachCandidate(
+                retainedBatch.batchId,
+                retainedTx
+            );
+
+
+        retainedBatch =
+            retainedLedger.markSubmitted(
+                retainedBatch.batchId
+            );
+
+
+        for (
+            let h = 1;
+            h <= 12;
+            h++
+        ) {
+
+            retainedStorage.saveBlock(
+                makeBlock(
+                    h,
+                    "d",
+                    h === 1
+                        ? retainedTx
+                        : null
+                )
+            );
+        }
+
+
+        const retainedBefore =
+            retainedLedger.getEvidence(
+                retainedTx.signature
+            );
+
+
+        assert.equal(
+            retainedBefore.included,
+            true
+        );
+
+        assert.equal(
+            retainedBefore.confirmed,
+            true
+        );
+
+        assert.equal(
+            retainedBefore.confirmations,
+            12
+        );
+
+
+        retainedLedger.finalize(
+            retainedBatch.batchId
+        );
+
+
+        assert.equal(
+            retainedLedger.getBatch(
+                retainedBatch.batchId
+            ).state,
+            "confirmed"
+        );
+
+
+        const retainedReplacement =
+            [];
+
+        for (
+            let h = 0;
+            h <= 12;
+            h++
+        ) {
+
+            retainedReplacement.push(
+                makeBlock(
+                    h,
+                    "e",
+                    h === 7
+                        ? retainedTx
+                        : null
+                )
+            );
+        }
+
+
+        retainedStorage.replaceAllBlocks(
+            retainedReplacement
+        );
+
+
+        const retainedAfter =
+            retainedLedger.getEvidence(
+                retainedTx.signature
+            );
+
+
+        assert.equal(
+            retainedAfter.included,
+            true
+        );
+
+        assert.equal(
+            retainedAfter.confirmed,
+            false
+        );
+
+        assert.equal(
+            retainedAfter.blockHeight,
+            7
+        );
+
+        assert.equal(
+            retainedAfter.tipHeight,
+            12
+        );
+
+        assert.equal(
+            retainedAfter.confirmations,
+            6
+        );
+
+
+        const retainedWake =
+            getWakeState(
+                retainedStorage,
+                1,
+                12
+            );
+
+
+        assert.equal(
+            retainedWake.integrityHalted,
+            true
+        );
+
+        assert.equal(
+            retainedWake.shouldRun,
+            false
+        );
+
+
+        const retainedHalt =
+            retainedLedger
+                .getIntegrityState();
+
+
+        assert.equal(
+            retainedHalt.halted,
+            true
+        );
+
+        assert.equal(
+            retainedHalt.reason,
+            "CONFIRMED_PAYOUT_LOST_FINALITY"
+        );
+
+        assert.equal(
+            retainedHalt.batchId,
+            retainedBatch.batchId
+        );
+
+        assert.equal(
+            retainedHalt.txSignature,
+            retainedTx.signature
+        );
+
+        assert.equal(
+            retainedHalt.evidence.included,
+            true
+        );
+
+        assert.equal(
+            retainedHalt.evidence.confirmed,
+            false
+        );
+
+        assert.equal(
+            retainedHalt.evidence.blockHeight,
+            7
+        );
+
+        assert.equal(
+            retainedHalt.evidence.tipHeight,
+            12
+        );
+
+        assert.equal(
+            retainedHalt.evidence.confirmations,
+            6
+        );
+
+        assert.equal(
+            retainedHalt.evidence
+                .requiredConfirmations,
+            12
+        );
+
+
+        const retainedNetwork =
+            {
+                calls: 0
+            };
+
+
+        const retainedEngine =
+            makeEngine(
+                retainedStorage,
+                retainedNetwork
+            );
+
+
+        await assert.rejects(
+            () =>
+                retainedEngine.runCycle({
+                    cutoffTimestamp:
+                        1000,
+
+                    rewardForHeight:
+                        () => 50,
+
+                    legacyShare:
+                        0.1,
+
+                    minLegacyPayout:
+                        0.01
+                }),
+
+            (err) =>
+                err &&
+                err.code ===
+                    "PAYOUT_INTEGRITY_HALT"
+        );
+
+
+        assert.equal(
+            retainedNetwork.calls,
+            0
+        );
+
+
+        pass(
+            "RETAINED_TX_LOSS_OF_DEPTH_HALTS_PAYOUTS"
+        );
+
+    } finally {
+
+        if (retainedStorage) {
+
+            try {
+                retainedStorage.close();
+            } catch {
+                try {
+                    retainedStorage.db.close();
+                } catch {}
+            }
+        }
+
+
+        for (
+            const suffix of [
+                "",
+                "-wal",
+                "-shm"
+            ]
+        ) {
+
+            try {
+                fs.unlinkSync(
+                    retainedDbPath +
+                    suffix
+                );
+            } catch {}
+        }
+    }
+
 
     console.log("");
 
     console.log(
-        `RESULT PAYOUT INTEGRITY HALT: ${passed}/12 PASS`
+        `RESULT PAYOUT INTEGRITY HALT: ${passed}/13 PASS`
     );
 
 
-    if (passed !== 12) {
+    if (passed !== 13) {
         process.exitCode = 1;
     }
 }
