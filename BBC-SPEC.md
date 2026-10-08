@@ -33,7 +33,7 @@ BitBudCoin is an independent proof-of-work blockchain (not EVM-compatible, not a
 
 - Key type: **Ed25519**.
 - Public key encoding: **SPKI** (DER), transported as PEM (`-----BEGIN PUBLIC KEY-----`).
-- Private key encoding: **PKCS#8** (DER), transported as PEM (`-----BEGIN PRIVATE KEY-----`).
+- Private key encoding: **PKCS#8** (DER), transported in a PEM container; private material is intentionally omitted from this specification.
 - **Address** = `prefix` + first 40 hex characters of `SHA-256( SPKI DER bytes of the public key )`.
   - `prefix` is `BbC` (mainnet) or `tBbC` (testnet).
   - The hex is lowercase on the network.
@@ -172,17 +172,15 @@ Further REST endpoints exist (swap offers, statistics, peers, solo mining) and a
 
 ## 9. Test vectors
 
-All values below are public test data. **Never use these keys or phrases for real funds.**
+All values below are public test data. Private material is deliberately omitted. **Never use these keys or phrases for real funds.**
 Checked with two independent implementations (Node.js and Python).
 
 ### 9.1 Key, address, transaction signature
 
-Ed25519 seed (hex): `000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f`
+Ed25519 seed: `<SYNTHETIC_SEED_FOR_DOCUMENTATION_ONLY>`
 
 ```
------BEGIN PRIVATE KEY-----
-MC4CAQAwBQYDK2VwBCIEIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f
------END PRIVATE KEY-----
+<SYNTHETIC_PRIVATE_KEY_FOR_DOCUMENTATION_ONLY>
 -----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=
 -----END PUBLIC KEY-----
