@@ -642,6 +642,420 @@ try {
 
     /*
      * ========================================================
+     * CONSENSUS SIGNATURE REPLAY PROTECTION
+     * ========================================================
+     *
+     * `transactions.signature` is not SQLite-unique.  Consensus must
+     * therefore reject a signature already in the canonical chain on
+     * both incremental and full-chain acceptance paths.
+     */
+
+    const replaySignature =
+        "CONSENSUS_REPLAY_SIGNATURE";
+
+
+    /*
+     * CONFIG.DIFFICULTY is the legacy exponent (1 in this test), while
+     * the consensus field is numeric work difficulty (16 ** exponent).
+     * Read the value from the live chain so the test uses exactly the
+     * same representation as receiveBlock().
+     */
+    const replayDifficulty =
+        restarted.difficulty;
+
+
+    assert.equal(
+        replayDifficulty,
+        Math.pow(
+            16,
+            CONFIG.DIFFICULTY
+        )
+    );
+
+
+    function transfer(
+        signature
+    ) {
+
+        return {
+            from:
+                minerB,
+
+            to:
+                minerA,
+
+            amount:
+                1,
+
+            type:
+                "transfer",
+
+            fee:
+                0,
+
+            timestamp:
+                1700000000000,
+
+            publicKey:
+                "TEST_PUBLIC_KEY",
+
+            signature
+        };
+    }
+
+
+    const replaySourceParent =
+        restarted.getLatestBlock();
+
+
+    const replaySource =
+        makeBlock({
+            height:
+                replaySourceParent.height +
+                1,
+
+            timestamp:
+                replaySourceParent.timestamp +
+                1000,
+
+            previousHash:
+                replaySourceParent.hash,
+
+            transactions: [
+                coinbase(
+                    replaySourceParent.height +
+                        1,
+                    replaySourceParent.timestamp +
+                        1000,
+                    minerB
+                ),
+
+                transfer(
+                    replaySignature
+                )
+            ],
+
+            difficulty:
+                replayDifficulty
+        });
+
+
+    const replaySourceResult =
+        restarted.receiveBlock(
+            replaySource
+        );
+
+
+    assert.equal(
+        replaySourceResult.accepted,
+        true,
+        replaySourceResult.reason ||
+            "source signature block rejected"
+    );
+
+
+    assert.equal(
+        restarted.hasSignature(
+            replaySignature
+        ),
+        true
+    );
+
+
+    const sourceSignatureCount =
+        restarted.storage.db
+            .prepare(`
+                SELECT COUNT(*) AS n
+                FROM transactions
+                WHERE signature = ?
+            `)
+            .get(
+                replaySignature
+            )
+            .n;
+
+
+    assert.equal(
+        sourceSignatureCount,
+        1
+    );
+
+
+    const canonicalLengthBeforeReplay =
+        restarted.chain.length;
+
+
+    const canonicalTipBeforeReplay =
+        restarted.getLatestBlock().hash;
+
+
+    const replayCandidate =
+        makeBlock({
+            height:
+                replaySource.height +
+                1,
+
+            timestamp:
+                replaySource.timestamp +
+                1000,
+
+            previousHash:
+                replaySource.hash,
+
+            transactions: [
+                coinbase(
+                    replaySource.height +
+                        1,
+                    replaySource.timestamp +
+                        1000,
+                    minerB
+                ),
+
+                transfer(
+                    replaySignature
+                )
+            ],
+
+            difficulty:
+                replayDifficulty
+        });
+
+
+    const replayReceiveResult =
+        restarted.receiveBlock(
+            replayCandidate
+        );
+
+
+    assert.equal(
+        replayReceiveResult.accepted,
+        false
+    );
+
+
+    assert.equal(
+        restarted.chain.length,
+        canonicalLengthBeforeReplay
+    );
+
+
+    assert.equal(
+        restarted.getLatestBlock().hash,
+        canonicalTipBeforeReplay
+    );
+
+
+    assert.equal(
+        restarted.storage.db
+            .prepare(`
+                SELECT COUNT(*) AS n
+                FROM transactions
+                WHERE signature = ?
+            `)
+            .get(
+                replaySignature
+            )
+            .n,
+        sourceSignatureCount
+    );
+
+
+    pass(
+        "RECEIVE_BLOCK_REJECTS_CANONICAL_SIGNATURE_REPLAY"
+    );
+
+
+    const sameBlockSignature =
+        "SAME_BLOCK_DUPLICATE_SIGNATURE";
+
+
+    const sameBlockCandidate =
+        makeBlock({
+            height:
+                replaySource.height +
+                1,
+
+            timestamp:
+                replaySource.timestamp +
+                1000,
+
+            previousHash:
+                replaySource.hash,
+
+            transactions: [
+                coinbase(
+                    replaySource.height +
+                        1,
+                    replaySource.timestamp +
+                        1000,
+                    minerB
+                ),
+
+                transfer(
+                    sameBlockSignature
+                ),
+
+                transfer(
+                    sameBlockSignature
+                )
+            ],
+
+            difficulty:
+                replayDifficulty
+        });
+
+
+    const sameBlockResult =
+        restarted.receiveBlock(
+            sameBlockCandidate
+        );
+
+
+    assert.equal(
+        sameBlockResult.accepted,
+        false
+    );
+
+
+    assert.equal(
+        restarted.chain.length,
+        canonicalLengthBeforeReplay
+    );
+
+
+    assert.equal(
+        restarted.getLatestBlock().hash,
+        canonicalTipBeforeReplay
+    );
+
+
+    assert.equal(
+        restarted.storage.db
+            .prepare(`
+                SELECT COUNT(*) AS n
+                FROM transactions
+                WHERE signature = ?
+            `)
+            .get(
+                sameBlockSignature
+            )
+            .n,
+        0
+    );
+
+
+    pass(
+        "RECEIVE_BLOCK_REJECTS_DUPLICATE_SIGNATURE_IN_BLOCK"
+    );
+
+
+    const replacementWithReplay =
+        [
+            restarted.chain[0]
+        ];
+
+
+    for (
+        let height = 1;
+        height <= 6;
+        height++
+    ) {
+
+        const parent =
+            replacementWithReplay[
+                replacementWithReplay.length -
+                    1
+            ];
+
+
+        replacementWithReplay.push(
+            makeBlock({
+                height,
+
+                timestamp:
+                    parent.timestamp +
+                    1000,
+
+                previousHash:
+                    parent.hash,
+
+                transactions:
+                    height === 1 ||
+                    height === 2
+                        ? [
+                            coinbase(
+                                height,
+                                parent.timestamp +
+                                    1000,
+                                minerB
+                            ),
+
+                            transfer(
+                                "REPLACE_CHAIN_REPLAY_SIGNATURE"
+                            )
+                        ]
+                        : [
+                            coinbase(
+                                height,
+                                parent.timestamp +
+                                    1000,
+                                minerB
+                            )
+                        ],
+
+                difficulty:
+                    replayDifficulty
+            })
+        );
+    }
+
+
+    const replacementReplayResult =
+        restarted.replaceChain(
+            replacementWithReplay
+        );
+
+
+    assert.equal(
+        replacementReplayResult.accepted,
+        false
+    );
+
+
+    assert.equal(
+        restarted.chain.length,
+        canonicalLengthBeforeReplay
+    );
+
+
+    assert.equal(
+        restarted.getLatestBlock().hash,
+        canonicalTipBeforeReplay
+    );
+
+
+    assert.equal(
+        restarted.storage.db
+            .prepare(`
+                SELECT COUNT(*) AS n
+                FROM transactions
+                WHERE signature = ?
+            `)
+            .get(
+                "REPLACE_CHAIN_REPLAY_SIGNATURE"
+            )
+            .n,
+        0
+    );
+
+
+    pass(
+        "REPLACE_CHAIN_REJECTS_SIGNATURE_REPLAY"
+    );
+
+
+    /*
+     * ========================================================
      * DATABASE INTEGRITY
      * ========================================================
      */
@@ -668,11 +1082,11 @@ try {
     console.log("");
 
     console.log(
-        `RESULT REAL SQLITE REPLACECHAIN: ${passed}/7 PASS`
+        `RESULT REAL SQLITE REPLACECHAIN: ${passed}/10 PASS`
     );
 
 
-    if (passed !== 7) {
+    if (passed !== 10) {
         process.exitCode = 1;
     }
 
