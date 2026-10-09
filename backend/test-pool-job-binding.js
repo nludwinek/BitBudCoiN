@@ -127,12 +127,13 @@ function findCandidate(work, predicate, max = 2_000_000) {
     );
 }
 
-function mineOrdinaryShare(work) {
+function mineOrdinaryShare(work, excludedHash = null) {
     return findCandidate(
         work,
         (hash) =>
             hash <= work.shareTarget &&
-            hash > work.blockTarget
+            hash > work.blockTarget &&
+            hash !== excludedHash
     );
 }
 
@@ -318,7 +319,10 @@ test("SAME_WALLET_TWO_MINERS", () => {
     );
 
     const shareA = mineOrdinaryShare(workA);
-    const shareB = mineOrdinaryShare(workB);
+    const shareB = mineOrdinaryShare(
+        workB,
+        shareA.hash
+    );
 
     const resultA =
         pool.submitShare(
